@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rad Mobility">
-<meta name="theme-color" content="#ffe3a3">
+<meta name="theme-color" content="#ffe6a8">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.json">
@@ -18,12 +18,13 @@
 <style>
   :root {
     /* sunrise: soft gold into pink */
-    --sky: linear-gradient(180deg, #ffe3a3 0%, #ffd2c4 30%, #fcece6 60%, #fbf3ee 100%);
+    --sky: radial-gradient(110% 42% at 50% 108%, rgba(255,160,110,.55), transparent 72%),
+           linear-gradient(180deg, #ffe6a8 0%, #ffdcc0 32%, #ffd3c6 62%, #ffc6c0 100%);
     --bg: #fbf3ee; --fg: #2e1a2b; --muted: #9a7a88; --faint: rgba(46,26,43,.07);
-    --card: rgba(255,255,255,.6); --line: rgba(46,26,43,.09);
-    --accent: #ff5e7e; --accent-fg: #fff; --shadow: rgba(255,94,126,.35);
+    --card: rgba(255,255,255,.32); --line: rgba(255,255,255,.7);
+    --accent: #e0773a; --accent-fg: #fff; --shadow: rgba(230,120,70,.35);
     /* the icon's sun, used for the main accents in both modes */
-    --sunset: linear-gradient(100deg, #ffb347 0%, #ff5e7e 55%, #ff3ea5 100%);
+    --sunset: linear-gradient(100deg, #ffc76a 0%, #ff9a5c 100%);
     --serif: "Fraunces", Georgia, serif;
     --retro: "Orbitron", -apple-system, sans-serif;
   }
@@ -33,6 +34,7 @@
     --bg: #12082e; --fg: #f5ecff; --muted: #a996c6; --faint: rgba(255,255,255,.08);
     --card: rgba(255,255,255,.06); --line: rgba(255,170,240,.14);
     --accent: #ff5ea8; --accent-fg: #fff; --shadow: rgba(255,62,165,.35);
+    --sunset: linear-gradient(100deg, #ffb347 0%, #ff5e7e 55%, #ff3ea5 100%);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; min-height: 100%; }
@@ -46,6 +48,10 @@
     -webkit-font-smoothing: antialiased;
   }
   body > * { position: relative; z-index: 1; }
+  body:not(.evening) :is(.week, .next, .thumb, .mode) {
+    backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 8px 24px -14px rgba(200,100,70,.35);
+  }
   /* faint synthwave floor, evening only */
   .horizon {
     position: fixed; z-index: 0; left: 0; right: 0; bottom: 0; height: 38vh; pointer-events: none;
@@ -149,7 +155,7 @@
   }
   .toast.show.has-undo { pointer-events: auto; }
   .toast button { font-weight: 700; color: #d6337f; }
-  body:not(.evening) .toast button { color: #ffb347; }
+  body:not(.evening) .toast button { color: #ffc76a; }
   .toast.show { opacity: .95; transform: translate(-50%, 0); }
   @media (min-width: 600px) { body { max-width: 520px; margin: 0 auto; } }
 </style>
@@ -224,7 +230,7 @@
     $("greeting").textContent = mode === "evening" ? "Wind down" : "Good morning";
     $("mode").innerHTML = mode === "evening" ? SUN : MOON;
     $("date").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
-    document.querySelector('meta[name="theme-color"]').content = mode === "evening" ? "#12082e" : "#ffe3a3";
+    document.querySelector('meta[name="theme-color"]').content = mode === "evening" ? "#12082e" : "#ffe6a8";
   }
 
   // ---- week strip + streak ----
@@ -339,7 +345,7 @@
   window.onYouTubeIframeAPIReady = () => {
     player = new YT.Player("yt", {
       videoId: video ? video[0] : undefined,
-      playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
+      playerVars: { playsinline: 0, rel: 0, modestbranding: 1, fs: 1 },
       events: {
         onReady: () => { ready = true; },
         onStateChange: (e) => {
