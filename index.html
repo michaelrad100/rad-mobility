@@ -136,6 +136,28 @@
   @keyframes pop { 40% { transform: scale(1.25); } }
 
   .spacer { min-height: 20px; flex: 0 0 20px; }
+  /* YouTube-app mode: a real link over the card, so iOS hands it to the YouTube app */
+  .applink { position: absolute; inset: 0; z-index: 2; display: none; }
+  body.app-mode .applink { display: block; }
+  .links .open { text-decoration: none; }
+
+  /* "Finished?" check-in after coming back from the YouTube app */
+  .finish {
+    display: none; margin-top: 14px; padding: 14px 16px; border-radius: 18px; background: var(--card); border: 1px solid var(--line);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); align-items: center; gap: 12px;
+  }
+  .finish.show { display: flex; animation: swap .4s ease; }
+  .finish .q { flex: 1; font-size: 15px; line-height: 1.3; }
+  .finish .q small { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+  .finish button { font-size: 14px; font-weight: 500; padding: 9px 12px; border-radius: 12px; color: var(--muted); }
+  .finish .yes { background: var(--soft); color: #fff; }
+
+  /* settings row */
+  .pref { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 14px; font-size: 13px; color: var(--muted); }
+  .switch { appearance: none; -webkit-appearance: none; width: 38px; height: 22px; border-radius: 999px; background: var(--faint); border: 1px solid var(--line); position: relative; margin: 0; cursor: pointer; transition: background .2s; }
+  .switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.2); transition: transform .2s; }
+  .switch:checked { background: var(--soft); border-color: transparent; }
+  .switch:checked::after { transform: translateX(16px); }
   .next {
     width: 100%; height: 54px; border-radius: 18px; background: var(--card); color: var(--fg);
     border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -175,6 +197,7 @@
       <div class="play"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg></div>
       <div class="len" id="len"></div>
     </div>
+    <a class="applink" id="applink" href="#" aria-label="Play in the YouTube app"></a>
   </div>
 
   <div class="meta">
@@ -183,8 +206,14 @@
     <div class="links">
       <button class="thumb" id="up" aria-label="Thumbs up — show this more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 10.5V20H4.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7zm0 0l3.6-6.3a1.6 1.6 0 0 1 2.9 1.1L12.8 9h5.6a2 2 0 0 1 2 2.4l-1.4 6.8a2.2 2.2 0 0 1-2.2 1.8H7"/></svg></button>
       <button class="thumb" id="down" aria-label="Thumbs down — don't show again"><svg style="transform:rotate(180deg)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 10.5V20H4.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7zm0 0l3.6-6.3a1.6 1.6 0 0 1 2.9 1.1L12.8 9h5.6a2 2 0 0 1 2 2.4l-1.4 6.8a2.2 2.2 0 0 1-2.2 1.8H7"/></svg></button>
-      <button class="open" id="open">Open in YouTube ↗</button>
+      <a class="open" id="open" href="#">Open in YouTube ↗</a>
     </div>
+  </div>
+
+  <div class="finish" id="finish">
+    <div class="q">Finished your stretch?<small id="finish-title"></small></div>
+    <button id="finish-no">Not yet</button>
+    <button class="yes" id="finish-yes">Yes ✓</button>
   </div>
 
   <div class="spacer"></div>
@@ -196,6 +225,7 @@
   <button class="next" id="next">Show me another
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
   </button>
+  <label class="pref">Play in the YouTube app <input type="checkbox" class="switch" id="appmode"></label>
   <div class="toast" id="toast"></div>
 
 <script src="videos.js"></script>
@@ -210,6 +240,7 @@
   const lastShown = store.get("lastShown", {});         // id -> timestamp
   const current = store.get("current", {});            // mode -> {id, at}
   const doneDays = new Set(store.get("doneDays", []));  // "YYYY-MM-DD" days you finished a routine
+  let appMode = store.get("appMode", false);             // play in the YouTube app (ad-free with Premium)
 
   const autoMode = () => { const h = new Date().getHours(); return (h >= 18 || h < 4) ? "evening" : "morning"; };
   let mode = autoMode();
@@ -283,6 +314,7 @@
     $("up").classList.toggle("on", liked.has(v[0]));
     $("title").textContent = v[1];
     $("len").textContent = v[3];
+    $("applink").href = $("open").href = `https://www.youtube.com/watch?v=${v[0]}`;
     const img = $("thumb");
     img.onerror = () => { img.onerror = null; img.src = `https://i.ytimg.com/vi/${v[0]}/hqdefault.jpg`; };
     img.src = `https://i.ytimg.com/vi/${v[0]}/maxresdefault.jpg`;
@@ -324,7 +356,31 @@
     next();
     toast("Removed from your queue", () => { blocked.delete(v[0]); store.set("blocked", [...blocked]); show(v, true); });
   };
-  $("open").onclick = () => { if (video) location.href = `https://www.youtube.com/watch?v=${video[0]}`; };
+  // Leaving for the YouTube app: remember what was playing so we can ask "Finished?" on return.
+  const handoff = () => { if (video) store.set("pending", { id: video[0], title: video[1], at: Date.now() }); };
+  $("applink").addEventListener("click", handoff);
+  $("open").addEventListener("click", handoff);
+
+  function checkFinished() {
+    const p = store.get("pending", null);
+    if (!p || Date.now() - p.at < 30e3 || Date.now() - p.at > 6 * 3600e3 || doneDays.has(dayKey(new Date()))) {
+      if (p && Date.now() - p.at > 6 * 3600e3) store.set("pending", null);
+      return;
+    }
+    $("finish-title").textContent = p.title;
+    $("finish").classList.add("show");
+  }
+  const closeFinish = () => { $("finish").classList.remove("show"); store.set("pending", null); };
+  $("finish-yes").onclick = () => { closeFinish(); markDone(); next(); };   // line up a fresh one for next time
+  $("finish-no").onclick = closeFinish;
+
+  $("appmode").checked = appMode;
+  document.body.classList.toggle("app-mode", appMode);
+  $("appmode").onchange = (e) => {
+    appMode = e.target.checked; store.set("appMode", appMode);
+    document.body.classList.toggle("app-mode", appMode);
+    toast(appMode ? "Videos will open in the YouTube app" : "Videos will play here");
+  };
   $("mode").onclick = () => { mode = mode === "evening" ? "morning" : "evening"; applyMode(); show(initial(), true); };
 
 
@@ -332,6 +388,7 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
     renderWeek(); applyMode();   // refresh date + morning/afternoon greeting
+    checkFinished();
     if (autoMode() === lastAuto) return;
     mode = lastAuto = autoMode(); applyMode(); show(initial(), true);
   });
@@ -339,6 +396,7 @@
   applyMode();
   renderWeek();
   show(initial());
+  checkFinished();   // the app may have been fully closed while you were in YouTube
 
   // ---- YouTube player ----
   window.onYouTubeIframeAPIReady = () => {
