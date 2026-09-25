@@ -133,13 +133,13 @@
 
   .spacer { min-height: 20px; flex: 0 0 20px; }
   .next {
-    width: 100%; height: 56px; border-radius: 18px; background: var(--sunset); color: var(--accent-fg);
-    box-shadow: 0 12px 28px -12px var(--shadow); text-shadow: 0 1px 2px rgba(120,20,60,.25);
+    width: 100%; height: 54px; border-radius: 18px; background: var(--card); color: var(--fg);
+    border: 1px solid var(--line); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
     font-weight: 600; font-size: 17px; display: flex; align-items: center; justify-content: center; gap: 8px;
     margin-top: 12px; transition: transform .12s;
   }
   .next:active, .mode:active { transform: scale(.97); }
-  .next svg { width: 18px; height: 18px; }
+  .next svg { width: 18px; height: 18px; color: var(--accent); }
 
   .toast {
     position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 14px); transform: translate(-50%, -8px);
