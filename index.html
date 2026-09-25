@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Stretch</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Stretch">
+<meta name="theme-color" content="#f4ede3">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<style>
+  :root {
+    --bg: #f4ede3; --fg: #2b2620; --muted: #8a7f72; --card: #fffaf3;
+    --accent: #d9793b; --accent-fg: #fff; --line: #e5dbcd;
+  }
+  body.evening {
+    --bg: #12141f; --fg: #e8e6f0; --muted: #8b8aa3; --card: #1b1e2d;
+    --accent: #8f86e8; --accent-fg: #12141f; --line: #2a2d40;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    transition: background .4s, color .4s;
+    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    display: flex; flex-direction: column; min-height: 100dvh;
+  }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 18px 0 16px; }
+  .greeting { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  .mode {
+    border: 1px solid var(--line); background: var(--card); color: var(--muted);
+    border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 14px;
+  }
+  .player { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 14px; overflow: hidden; background: #000; }
+  .player > * { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .meta { padding: 16px 2px 0; min-height: 88px; }
+  .title { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
+  .actions { margin-top: auto; padding: 20px 0 22px; display: grid; gap: 10px; }
+  button.primary, button.secondary {
+    font: inherit; font-weight: 600; border-radius: 14px; padding: 16px; width: 100%;
+    border: 0; cursor: pointer; transition: transform .1s;
+  }
+  button:active { transform: scale(.98); }
+  .primary { background: var(--accent); color: var(--accent-fg); font-size: 17px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .secondary { background: var(--card); color: var(--fg); border: 1px solid var(--line) !important; font-size: 15px; }
+  .done { color: var(--accent); font-weight: 600; font-size: 14px; margin-top: 8px; display: none; }
+  .toast {
+    position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px;
+    opacity: 0; transition: opacity .25s; pointer-events: none;
+  }
+  .toast.show { opacity: .92; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="greeting" id="greeting">Good morning</div>
+    <button class="mode" id="mode">Switch to evening</button>
+  </header>
+
+  <div class="player"><div id="yt"></div></div>
+
+  <div class="meta">
+    <div class="title" id="title">Loading…</div>
+    <div class="sub" id="sub"></div>
+    <div class="done" id="done">✓ Done for today — nice.</div>
+  </div>
+
+  <div class="actions">
+    <button class="primary" id="next">Next video →</button>
+    <div class="row">
+      <button class="secondary" id="block">Not for me</button>
+      <button class="secondary" id="open">Open in YouTube</button>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+<script src="videos.js"></script>
+<script>
+  // ---- storage (safe if localStorage is unavailable) ----
+  const store = {
+    get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+  const blocked = new Set(store.get("blocked", []));   // "not for me" + unembeddable
+  const lastShown = store.get("lastShown", {});         // id -> timestamp
+  const current = store.get("current", {});            // mode -> {id, at}
+
+  const autoMode = () => { const h = new Date().getHours(); return (h >= 18 || h < 4) ? "evening" : "morning"; };
+  let mode = autoMode();
+  let lastAuto = mode;   // a manual switch sticks until the clock crosses 6pm / 4am
+  let video = null, player = null, ready = false;
+
+  const $ = (id) => document.getElementById(id);
+
+  function applyMode() {
+    document.body.classList.toggle("evening", mode === "evening");
+    $("greeting").textContent = mode === "evening" ? "Wind down" : "Good morning";
+    $("mode").textContent = mode === "evening" ? "☀︎ Morning" : "☾ Evening";
+    document.querySelector('meta[name="theme-color"]').content = mode === "evening" ? "#12141f" : "#f4ede3";
+  }
+
+  // Least-recently-shown first, random among ties, so you cycle the whole list before repeats.
+  function pick(excludeId) {
+    const pool = VIDEOS[mode].filter(v => !blocked.has(v[0]) && v[0] !== excludeId);
+    if (!pool.length) return null;
+    pool.sort(() => Math.random() - 0.5);
+    pool.sort((a, b) => (lastShown[a[0]] || 0) - (lastShown[b[0]] || 0));
+    return pool[0];
+  }
+
+  function show(v) {
+    video = v;
+    $("done").style.display = "none";
+    if (!v) { $("title").textContent = "You've skipped everything here."; $("sub").textContent = "Long-press “Not for me” to reset."; return; }
+    lastShown[v[0]] = Date.now(); store.set("lastShown", lastShown);
+    current[mode] = { id: v[0], at: Date.now() }; store.set("current", current);
+    $("title").textContent = v[1];
+    $("sub").textContent = `${v[2]} · ${v[3]}`;
+    if (ready) player.cueVideoById(v[0]);
+  }
+
+  function initial() {
+    // Reopening within 2 hours keeps the same video instead of jumping to a new one.
+    const c = current[mode];
+    if (c && Date.now() - c.at < 2 * 3600e3 && !blocked.has(c.id)) {
+      const v = VIDEOS[mode].find(x => x[0] === c.id);
+      if (v) return v;
+    }
+    return pick();
+  }
+
+  function next() { show(pick(video && video[0])); }
+
+  function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1600); }
+
+  $("next").onclick = next;
+  $("block").onclick = () => { if (!video) return; blocked.add(video[0]); store.set("blocked", [...blocked]); toast("Won't show that one again"); next(); };
+  $("open").onclick = () => { if (video) location.href = `https://www.youtube.com/watch?v=${video[0]}`; };
+  $("mode").onclick = () => { mode = mode === "evening" ? "morning" : "evening"; applyMode(); show(initial()); };
+
+  // Long-press "Not for me" to clear the hidden list.
+  let pressTimer;
+  $("block").addEventListener("touchstart", () => { pressTimer = setTimeout(() => { blocked.clear(); store.set("blocked", []); toast("Hidden videos restored"); show(pick()); }, 900); }, { passive: true });
+  $("block").addEventListener("touchend", () => clearTimeout(pressTimer));
+
+  // When the app comes back from the background and the time of day has flipped, follow it.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden || autoMode() === lastAuto) return;
+    mode = lastAuto = autoMode(); applyMode(); show(initial());
+  });
+
+  applyMode();
+  show(initial());
+
+  // ---- YouTube player ----
+  window.onYouTubeIframeAPIReady = () => {
+    player = new YT.Player("yt", {
+      videoId: video ? video[0] : undefined,
+      playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
+      events: {
+        onReady: () => { ready = true; },
+        onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) $("done").style.display = "block"; },
+        // 100 = removed, 101/150 = owner disabled embedding. Hide it and move on.
+        onError: (e) => { if ([100, 101, 150].includes(e.data) && video) { blocked.add(video[0]); store.set("blocked", [...blocked]); next(); } },
+      },
+    });
+  };
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>

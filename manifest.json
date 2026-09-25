@@ -1,0 +1,3 @@
+{ "name": "Stretch", "short_name": "Stretch", "start_url": "./", "display": "standalone",
+  "background_color": "#f4ede3", "theme_color": "#f4ede3",
+  "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png" }] }
