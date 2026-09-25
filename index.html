@@ -8,78 +8,156 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rad Mobility">
-<meta name="theme-color" content="#f4ede3">
+<meta name="theme-color" content="#fbe3c6">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" href="icon.png">
 <link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f4ede3; --fg: #2b2620; --muted: #8a7f72; --card: #fffaf3;
-    --accent: #d9793b; --accent-fg: #fff; --line: #e5dbcd;
+    --bg: #f6eee4; --glow: #fbdcb9; --fg: #2b2620; --muted: #93867a; --faint: rgba(43,38,32,.08);
+    --card: rgba(255,251,245,.7); --accent: #d9793b; --accent-fg: #fff; --line: rgba(43,38,32,.1);
+    --serif: "Fraunces", Georgia, serif;
   }
   body.evening {
-    --bg: #12141f; --fg: #e8e6f0; --muted: #8b8aa3; --card: #1b1e2d;
-    --accent: #8f86e8; --accent-fg: #12141f; --line: #2a2d40;
+    --bg: #11131d; --glow: #2c2858; --fg: #ece9f5; --muted: #8e8ca8; --faint: rgba(236,233,245,.08);
+    --card: rgba(255,255,255,.05); --accent: #a39af2; --accent-fg: #14131f; --line: rgba(236,233,245,.1);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; }
+  html, body { margin: 0; min-height: 100%; }
   body {
-    background: var(--bg); color: var(--fg);
+    background: radial-gradient(120% 55% at 50% -5%, var(--glow) 0%, var(--bg) 70%) no-repeat, var(--bg);
+    color: var(--fg);
     font: 16px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
-    transition: background .4s, color .4s;
-    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    padding: calc(env(safe-area-inset-top) + 12px) 20px calc(env(safe-area-inset-bottom) + 16px);
     display: flex; flex-direction: column; min-height: 100dvh;
+    transition: color .5s;
+    -webkit-font-smoothing: antialiased;
   }
-  header { display: flex; align-items: center; justify-content: space-between; padding: 18px 0 16px; }
-  .greeting { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+
+  /* header */
+  header { display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 0 22px; }
+  .eyebrow { font-size: 12px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-family: var(--serif); font-weight: 400; font-size: 36px; line-height: 1.1; letter-spacing: -0.02em; margin: 6px 0 0; }
   .mode {
-    border: 1px solid var(--line); background: var(--card); color: var(--muted);
-    border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 14px;
+    width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
+    background: var(--card); border: 1px solid var(--line); color: var(--fg);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); flex-shrink: 0; margin-top: 6px;
   }
-  .player { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 14px; overflow: hidden; background: #000; }
-  .player > * { position: absolute; inset: 0; width: 100%; height: 100%; }
-  .meta { padding: 16px 2px 0; min-height: 88px; }
-  .title { font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
-  .sub { color: var(--muted); font-size: 14px; margin-top: 4px; }
-  .actions { margin-top: auto; padding: 20px 0 22px; display: grid; gap: 10px; }
-  button.primary, button.secondary {
-    font: inherit; font-weight: 600; border-radius: 14px; padding: 16px; width: 100%;
-    border: 0; cursor: pointer; transition: transform .1s;
+  .mode svg { width: 19px; height: 19px; }
+
+  /* video card */
+  .player {
+    position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 20px; overflow: hidden; background: #000;
+    box-shadow: 0 18px 40px -18px rgba(60,30,10,.45), 0 2px 6px rgba(0,0,0,.08);
   }
-  button:active { transform: scale(.98); }
-  .primary { background: var(--accent); color: var(--accent-fg); font-size: 17px; }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .secondary { background: var(--card); color: var(--fg); border: 1px solid var(--line) !important; font-size: 15px; }
-  .done { color: var(--accent); font-weight: 600; font-size: 14px; margin-top: 8px; display: none; }
+  body.evening .player { box-shadow: 0 18px 50px -16px rgba(0,0,0,.8), 0 0 0 1px var(--line); }
+  .player iframe, #yt { position: absolute; inset: 0; width: 100%; height: 100%; }
+  /* The poster sits on top but lets taps fall through to YouTube's player, so iOS plays it natively. */
+  .poster { position: absolute; inset: 0; pointer-events: none; transition: opacity .35s; }
+  .poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .poster::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,.45)); }
+  .poster .play {
+    position: absolute; left: 50%; top: 50%; width: 68px; height: 68px; margin: -34px 0 0 -34px; border-radius: 50%;
+    background: rgba(255,255,255,.88); display: grid; place-items: center; z-index: 1;
+    box-shadow: 0 8px 24px rgba(0,0,0,.25);
+  }
+  .poster .play svg { width: 26px; height: 26px; margin-left: 4px; fill: #2b2620; }
+  .poster .len {
+    position: absolute; right: 12px; bottom: 12px; z-index: 1; font-size: 12px; font-weight: 600; color: #fff;
+    background: rgba(0,0,0,.45); padding: 4px 9px; border-radius: 999px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  .poster.hidden { opacity: 0; }
+  .player.swap { animation: swap .45s ease; }
+  @keyframes swap { 0% { opacity: .2; transform: scale(.97); } 100% { opacity: 1; transform: none; } }
+
+  /* meta */
+  .meta { padding: 18px 2px 0; }
+  .channel { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .title { font-family: var(--serif); font-size: 23px; line-height: 1.2; letter-spacing: -0.01em; margin-top: 5px; }
+  .links { display: flex; gap: 18px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .links button { color: var(--muted); padding: 4px 0; }
+  .links button:active { color: var(--fg); }
+
+  /* week */
+  .week {
+    margin-top: auto; padding: 16px 18px; border-radius: 18px; background: var(--card); border: 1px solid var(--line);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  }
+  .week-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; }
+  .week-head .label { color: var(--muted); font-weight: 600; letter-spacing: .08em; text-transform: uppercase; font-size: 11px; }
+  .week-head .streak { color: var(--fg); font-weight: 500; }
+  .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 12px; text-align: center; }
+  .day { font-size: 11px; color: var(--muted); }
+  .dot {
+    width: 30px; height: 30px; margin: 6px auto 0; border-radius: 50%; background: var(--faint);
+    display: grid; place-items: center; transition: background .4s, transform .4s;
+  }
+  .dot svg { width: 14px; height: 14px; stroke: var(--accent-fg); opacity: 0; }
+  .day.today .dot { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .day.today { color: var(--fg); font-weight: 600; }
+  .day.done .dot { background: var(--accent); }
+  .day.done .dot svg { opacity: 1; }
+  .day.pop .dot { animation: pop .6s ease; }
+  @keyframes pop { 40% { transform: scale(1.25); } }
+
+  .spacer { min-height: 20px; flex: 0 0 20px; }
+  .next {
+    width: 100%; height: 56px; border-radius: 18px; background: var(--accent); color: var(--accent-fg);
+    font-weight: 600; font-size: 17px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    margin-top: 12px; transition: transform .12s;
+  }
+  .next:active, .mode:active { transform: scale(.97); }
+  .next svg { width: 18px; height: 18px; }
+
   .toast {
-    position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%);
-    background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px;
-    opacity: 0; transition: opacity .25s; pointer-events: none;
+    position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 14px); transform: translate(-50%, -8px);
+    background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 500;
+    opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; white-space: nowrap;
   }
-  .toast.show { opacity: .92; }
+  .toast.show { opacity: .95; transform: translate(-50%, 0); }
+  @media (min-width: 600px) { body { max-width: 520px; margin: 0 auto; } }
 </style>
 </head>
 <body>
   <header>
-    <div class="greeting" id="greeting">Good morning</div>
-    <button class="mode" id="mode">Switch to evening</button>
+    <div>
+      <div class="eyebrow" id="date"></div>
+      <h1 id="greeting">Good morning</h1>
+    </div>
+    <button class="mode" id="mode" aria-label="Switch morning / evening"></button>
   </header>
 
-  <div class="player"><div id="yt"></div></div>
-
-  <div class="meta">
-    <div class="title" id="title">Loading…</div>
-    <div class="sub" id="sub"></div>
-    <div class="done" id="done">✓ Done for today — nice.</div>
-  </div>
-
-  <div class="actions">
-    <button class="primary" id="next">Next video →</button>
-    <div class="row">
-      <button class="secondary" id="block">Not for me</button>
-      <button class="secondary" id="open">Open in YouTube</button>
+  <div class="player" id="card">
+    <div id="yt"></div>
+    <div class="poster" id="poster">
+      <img id="thumb" alt="">
+      <div class="play"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg></div>
+      <div class="len" id="len"></div>
     </div>
   </div>
+
+  <div class="meta">
+    <div class="channel" id="channel"></div>
+    <div class="title" id="title">Loading…</div>
+    <div class="links">
+      <button id="block">Not for me</button>
+      <button id="open">Open in YouTube ↗</button>
+    </div>
+  </div>
+
+  <div class="spacer"></div>
+  <section class="week">
+    <div class="week-head"><span class="label">This week</span><span class="streak" id="streak"></span></div>
+    <div class="days" id="days"></div>
+  </section>
+
+  <button class="next" id="next">Show me another
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+  </button>
   <div class="toast" id="toast"></div>
 
 <script src="videos.js"></script>
@@ -92,19 +170,52 @@
   const blocked = new Set(store.get("blocked", []));   // "not for me" + unembeddable
   const lastShown = store.get("lastShown", {});         // id -> timestamp
   const current = store.get("current", {});            // mode -> {id, at}
+  const doneDays = new Set(store.get("doneDays", []));  // "YYYY-MM-DD" days you finished a routine
 
   const autoMode = () => { const h = new Date().getHours(); return (h >= 18 || h < 4) ? "evening" : "morning"; };
   let mode = autoMode();
   let lastAuto = mode;   // a manual switch sticks until the clock crosses 6pm / 4am
-  let video = null, player = null, ready = false;
+  let video = null, player = null, ready = false, progressTimer = null;
 
   const $ = (id) => document.getElementById(id);
+  const SUN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/></svg>';
+  const MOON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>';
+  const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+
+  const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
   function applyMode() {
     document.body.classList.toggle("evening", mode === "evening");
     $("greeting").textContent = mode === "evening" ? "Wind down" : "Good morning";
-    $("mode").textContent = mode === "evening" ? "☀︎ Morning" : "☾ Evening";
-    document.querySelector('meta[name="theme-color"]').content = mode === "evening" ? "#12141f" : "#f4ede3";
+    $("mode").innerHTML = mode === "evening" ? SUN : MOON;
+    $("date").textContent = new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+    document.querySelector('meta[name="theme-color"]').content = mode === "evening" ? "#2c2858" : "#fbe3c6";
+  }
+
+  // ---- week strip + streak ----
+  function renderWeek(popToday) {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const monday = new Date(today); monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    $("days").innerHTML = "";
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday); d.setDate(monday.getDate() + i);
+      const k = dayKey(d), isToday = k === dayKey(today);
+      const el = document.createElement("div");
+      el.className = "day" + (doneDays.has(k) ? " done" : "") + (isToday ? " today" : "") + (isToday && popToday ? " pop" : "");
+      el.innerHTML = `${"MTWTFSS"[i]}<div class="dot">${CHECK}</div>`;
+      $("days").appendChild(el);
+    }
+    let streak = 0; const d = new Date(today);
+    if (!doneDays.has(dayKey(d))) d.setDate(d.getDate() - 1);   // today not done yet doesn't break the streak
+    while (doneDays.has(dayKey(d))) { streak++; d.setDate(d.getDate() - 1); }
+    $("streak").textContent = streak > 1 ? `${streak}-day streak` : doneDays.has(dayKey(today)) ? "Done today ✓" : "";
+  }
+
+  function markDone() {
+    const k = dayKey(new Date());
+    if (doneDays.has(k)) return;
+    doneDays.add(k); store.set("doneDays", [...doneDays]);
+    renderWeek(true); toast(mode === "evening" ? "Nicely done. Sleep well." : "Nice work. Have a good day.");
   }
 
   // Least-recently-shown first, random among ties, so you cycle the whole list before repeats.
@@ -116,14 +227,19 @@
     return pool[0];
   }
 
-  function show(v) {
+  function show(v, animate) {
     video = v;
-    $("done").style.display = "none";
-    if (!v) { $("title").textContent = "You've skipped everything here."; $("sub").textContent = "Long-press “Not for me” to reset."; return; }
+    if (!v) { $("channel").textContent = ""; $("title").textContent = "You've hidden everything here. Long-press “Not for me” to bring them back."; return; }
     lastShown[v[0]] = Date.now(); store.set("lastShown", lastShown);
     current[mode] = { id: v[0], at: Date.now() }; store.set("current", current);
+    $("channel").textContent = v[2];
     $("title").textContent = v[1];
-    $("sub").textContent = `${v[2]} · ${v[3]}`;
+    $("len").textContent = v[3];
+    const img = $("thumb");
+    img.onerror = () => { img.onerror = null; img.src = `https://i.ytimg.com/vi/${v[0]}/hqdefault.jpg`; };
+    img.src = `https://i.ytimg.com/vi/${v[0]}/maxresdefault.jpg`;
+    $("poster").classList.remove("hidden");
+    if (animate) { const c = $("card"); c.classList.remove("swap"); void c.offsetWidth; c.classList.add("swap"); }
     if (ready) player.cueVideoById(v[0]);
   }
 
@@ -137,27 +253,31 @@
     return pick();
   }
 
-  function next() { show(pick(video && video[0])); }
+  function next() { show(pick(video && video[0]), true); }
 
-  function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); setTimeout(() => t.classList.remove("show"), 1600); }
+  let toastTimer;
+  function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200); }
 
   $("next").onclick = next;
-  $("block").onclick = () => { if (!video) return; blocked.add(video[0]); store.set("blocked", [...blocked]); toast("Won't show that one again"); next(); };
+  $("block").onclick = () => { if (!video) return; blocked.add(video[0]); store.set("blocked", [...blocked]); toast("Got it. Won't show that again."); next(); };
   $("open").onclick = () => { if (video) location.href = `https://www.youtube.com/watch?v=${video[0]}`; };
-  $("mode").onclick = () => { mode = mode === "evening" ? "morning" : "evening"; applyMode(); show(initial()); };
+  $("mode").onclick = () => { mode = mode === "evening" ? "morning" : "evening"; applyMode(); show(initial(), true); };
 
   // Long-press "Not for me" to clear the hidden list.
   let pressTimer;
-  $("block").addEventListener("touchstart", () => { pressTimer = setTimeout(() => { blocked.clear(); store.set("blocked", []); toast("Hidden videos restored"); show(pick()); }, 900); }, { passive: true });
+  $("block").addEventListener("touchstart", () => { pressTimer = setTimeout(() => { blocked.clear(); store.set("blocked", []); toast("Hidden videos restored"); show(pick(), true); }, 900); }, { passive: true });
   $("block").addEventListener("touchend", () => clearTimeout(pressTimer));
 
   // When the app comes back from the background and the time of day has flipped, follow it.
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden || autoMode() === lastAuto) return;
-    mode = lastAuto = autoMode(); applyMode(); show(initial());
+    if (document.hidden) return;
+    renderWeek();
+    if (autoMode() === lastAuto) return;
+    mode = lastAuto = autoMode(); applyMode(); show(initial(), true);
   });
 
   applyMode();
+  renderWeek();
   show(initial());
 
   // ---- YouTube player ----
@@ -167,7 +287,17 @@
       playerVars: { playsinline: 1, rel: 0, modestbranding: 1 },
       events: {
         onReady: () => { ready = true; },
-        onStateChange: (e) => { if (e.data === YT.PlayerState.ENDED) $("done").style.display = "block"; },
+        onStateChange: (e) => {
+          const S = YT.PlayerState;
+          if (e.data === S.PLAYING || e.data === S.BUFFERING) $("poster").classList.add("hidden");
+          if (e.data === S.ENDED) markDone();
+          // Watching ~80% of a routine counts as done for the day.
+          clearInterval(progressTimer);
+          if (e.data === S.PLAYING) progressTimer = setInterval(() => {
+            const dur = player.getDuration();
+            if (dur && player.getCurrentTime() / dur >= 0.8) { markDone(); clearInterval(progressTimer); }
+          }, 3000);
+        },
         // 100 = removed, 101/150 = owner disabled embedding. Hide it and move on.
         onError: (e) => { if ([100, 101, 150].includes(e.data) && video) { blocked.add(video[0]); store.set("blocked", [...blocked]); next(); } },
       },
