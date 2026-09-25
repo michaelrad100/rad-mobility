@@ -78,9 +78,17 @@
   .meta { padding: 18px 2px 0; }
   .channel { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
   .title { font-family: var(--serif); font-size: 23px; line-height: 1.2; letter-spacing: -0.01em; margin-top: 5px; }
-  .links { display: flex; gap: 18px; margin-top: 12px; font-size: 14px; color: var(--muted); }
-  .links button { color: var(--muted); padding: 4px 0; }
-  .links button:active { color: var(--fg); }
+  .links { display: flex; align-items: center; gap: 10px; margin-top: 14px; font-size: 14px; color: var(--muted); }
+  .links .open { color: var(--muted); padding: 4px 0; margin-left: auto; }
+  .links .open:active { color: var(--fg); }
+  .thumb {
+    width: 44px; height: 38px; border-radius: 12px; display: grid; place-items: center;
+    background: var(--card); border: 1px solid var(--line); color: var(--muted); transition: transform .15s, background .2s, color .2s;
+  }
+  .thumb svg { width: 19px; height: 19px; }
+  .thumb:active { transform: scale(.92); }
+  .thumb.on { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+  .thumb.on svg path { fill: currentColor; }
 
   /* week */
   .week {
@@ -117,7 +125,11 @@
     position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 14px); transform: translate(-50%, -8px);
     background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 999px; font-size: 14px; font-weight: 500;
     opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; white-space: nowrap;
+    display: flex; align-items: center; gap: 12px;
   }
+  .toast.show.has-undo { pointer-events: auto; }
+  .toast button { font-weight: 700; color: var(--accent); }
+  body:not(.evening) .toast button { color: #f6b27d; }
   .toast.show { opacity: .95; transform: translate(-50%, 0); }
   @media (min-width: 600px) { body { max-width: 520px; margin: 0 auto; } }
 </style>
@@ -144,8 +156,9 @@
     <div class="channel" id="channel"></div>
     <div class="title" id="title">Loading…</div>
     <div class="links">
-      <button id="block">Not for me</button>
-      <button id="open">Open in YouTube ↗</button>
+      <button class="thumb" id="up" aria-label="Thumbs up — show this more"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 10.5V20H4.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7zm0 0l3.6-6.3a1.6 1.6 0 0 1 2.9 1.1L12.8 9h5.6a2 2 0 0 1 2 2.4l-1.4 6.8a2.2 2.2 0 0 1-2.2 1.8H7"/></svg></button>
+      <button class="thumb" id="down" aria-label="Thumbs down — don't show again"><svg style="transform:rotate(180deg)" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 10.5V20H4.5a1 1 0 0 1-1-1v-7.5a1 1 0 0 1 1-1H7zm0 0l3.6-6.3a1.6 1.6 0 0 1 2.9 1.1L12.8 9h5.6a2 2 0 0 1 2 2.4l-1.4 6.8a2.2 2.2 0 0 1-2.2 1.8H7"/></svg></button>
+      <button class="open" id="open">Open in YouTube ↗</button>
     </div>
   </div>
 
@@ -167,7 +180,8 @@
     get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
   };
-  const blocked = new Set(store.get("blocked", []));   // "not for me" + unembeddable
+  const blocked = new Set(store.get("blocked", []));   // thumbs down + unembeddable
+  const liked = new Set(store.get("liked", []));       // thumbs up
   const lastShown = store.get("lastShown", {});         // id -> timestamp
   const current = store.get("current", {});            // mode -> {id, at}
   const doneDays = new Set(store.get("doneDays", []));  // "YYYY-MM-DD" days you finished a routine
@@ -219,9 +233,12 @@
   }
 
   // Least-recently-shown first, random among ties, so you cycle the whole list before repeats.
+  // Thumbs-up videos jump the queue ~40% of the time once they haven't been shown for 3 days.
   function pick(excludeId) {
     const pool = VIDEOS[mode].filter(v => !blocked.has(v[0]) && v[0] !== excludeId);
     if (!pool.length) return null;
+    const fav = pool.filter(v => liked.has(v[0]) && Date.now() - (lastShown[v[0]] || 0) > 3 * 864e5);
+    if (fav.length && Math.random() < 0.4) return fav[Math.floor(Math.random() * fav.length)];
     pool.sort(() => Math.random() - 0.5);
     pool.sort((a, b) => (lastShown[a[0]] || 0) - (lastShown[b[0]] || 0));
     return pool[0];
@@ -229,10 +246,15 @@
 
   function show(v, animate) {
     video = v;
-    if (!v) { $("channel").textContent = ""; $("title").textContent = "You've hidden everything here. Long-press “Not for me” to bring them back."; return; }
+    if (!v) {
+      $("channel").textContent = ""; $("title").textContent = "You've thumbed-down everything here.";
+      toast("Bring them all back?", () => { VIDEOS[mode].forEach(x => blocked.delete(x[0])); store.set("blocked", [...blocked]); show(pick(), true); }, "Restore");
+      return;
+    }
     lastShown[v[0]] = Date.now(); store.set("lastShown", lastShown);
     current[mode] = { id: v[0], at: Date.now() }; store.set("current", current);
     $("channel").textContent = v[2];
+    $("up").classList.toggle("on", liked.has(v[0]));
     $("title").textContent = v[1];
     $("len").textContent = v[3];
     const img = $("thumb");
@@ -256,17 +278,29 @@
   function next() { show(pick(video && video[0]), true); }
 
   let toastTimer;
-  function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200); }
+  function toast(msg, undo, label = "Undo") {
+    const t = $("toast"); t.textContent = msg; t.classList.toggle("has-undo", !!undo);
+    if (undo) { const b = document.createElement("button"); b.textContent = label; b.onclick = () => { t.classList.remove("show"); undo(); }; t.appendChild(b); }
+    t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), undo ? 4000 : 2200);
+  }
 
   $("next").onclick = next;
-  $("block").onclick = () => { if (!video) return; blocked.add(video[0]); store.set("blocked", [...blocked]); toast("Got it. Won't show that again."); next(); };
+  $("up").onclick = () => {
+    if (!video) return;
+    const id = video[0];
+    if (liked.has(id)) liked.delete(id); else { liked.add(id); toast("Saved. You'll see this one more often."); }
+    store.set("liked", [...liked]); $("up").classList.toggle("on", liked.has(id));
+  };
+  $("down").onclick = () => {
+    if (!video) return;
+    const v = video;
+    blocked.add(v[0]); liked.delete(v[0]); store.set("blocked", [...blocked]); store.set("liked", [...liked]);
+    next();
+    toast("Removed from your queue", () => { blocked.delete(v[0]); store.set("blocked", [...blocked]); show(v, true); });
+  };
   $("open").onclick = () => { if (video) location.href = `https://www.youtube.com/watch?v=${video[0]}`; };
   $("mode").onclick = () => { mode = mode === "evening" ? "morning" : "evening"; applyMode(); show(initial(), true); };
 
-  // Long-press "Not for me" to clear the hidden list.
-  let pressTimer;
-  $("block").addEventListener("touchstart", () => { pressTimer = setTimeout(() => { blocked.clear(); store.set("blocked", []); toast("Hidden videos restored"); show(pick(), true); }, 900); }, { passive: true });
-  $("block").addEventListener("touchend", () => clearTimeout(pressTimer));
 
   // When the app comes back from the background and the time of day has flipped, follow it.
   document.addEventListener("visibilitychange", () => {
