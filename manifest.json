@@ -1,3 +1,3 @@
-{ "name": "Stretch", "short_name": "Stretch", "start_url": "./", "display": "standalone",
+{ "name": "Rad Mobility", "short_name": "Rad Mobility", "start_url": "./", "display": "standalone",
   "background_color": "#12141f", "theme_color": "#12141f",
   "icons": [{ "src": "icon.png", "sizes": "512x512", "type": "image/png" }] }
