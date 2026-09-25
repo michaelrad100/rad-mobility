@@ -1,4 +1,4 @@
-// Curated follow-along routines, 5–12 min. [id, title, channel, length]
+// Curated follow-along routines, 5–16 min. [id, title, channel, length]
 // Add or remove lines freely; the app picks from whichever list matches the time of day.
 window.VIDEOS = {
   morning: [
@@ -26,6 +26,21 @@ window.VIDEOS = {
     ["Kvoq4luIYVc", "5 Minute Full Body Stretch", "Yoga With Adriene", "6:40"],
     ["9wl-O_H9q5M", "5 min. Daily Full Body Stretch", "Kaleigh Cohen Strength", "6:09"],
     ["Bpsoqk8v_bE", "5 Minute Daily Mobility Workout", "Lucy Wyndham-Read", "5:17"],
+    // 12–16 min
+    ["vYEeGGbsp_s", "Do This Every Morning: 15 Minute Mobility", "EDR Fitness", "15:36"],
+    ["5abdqQztF7M", "15 Minute Morning Flexibility Routine", "Tom Merrick", "16:01"],
+    ["R3WDe7byUXo", "15 Minute Full Body Mobility Routine", "Tom Merrick", "14:53"],
+    ["L_xrDAtykMI", "15 Minute Beginner Stretch Flexibility Routine", "Tom Merrick", "15:00"],
+    ["0VrLgzwTmTg", "10 Minute Morning Mobility Routine", "Tom Merrick", "12:23"],
+    ["yDOImN60yhQ", "15 Min. Morning Mobility Routine", "mobility by julia reppel", "15:54"],
+    ["ddlULhzLbPU", "15 Min. Daily Mobility Routine", "mobility by julia reppel", "15:50"],
+    ["4yj_DJPedIc", "15 Min Morning Mobility Routine", "Fraser Wilson", "15:25"],
+    ["TFSYNWPYujQ", "15 Minute Full Body Mobility for Athletes", "Soheil Var", "15:19"],
+    ["0oYnT5OBzKg", "15 Minute Morning Mobility for Full Body Flexibility", "Yoga With Tim", "15:25"],
+    ["E2SOrScNbww", "Full Body Stretching Routine (15 min.)", "Strength Side", "15:57"],
+    ["1DZmk2dobvU", "Daily Mobility Reset", "Tom Morrison", "13:00"],
+    ["oMR5UOikE3k", "10 Minute Full Body Mobility Flow", "Tom Morrison", "12:08"],
+    ["yDXBRssBpVo", "10 Minute Mobility & Stretching Routine", "Citizen Athletics", "13:33"],
   ],
   evening: [
     ["_9JZuOO9E_w", "10 Minute Evening Stretch — Better Sleep", "Mady Morrison", "10:19"],
@@ -49,5 +64,17 @@ window.VIDEOS = {
     ["SqFniT-Oyt8", "5 Minute Yoga for Sleep", "Yoga With Bird", "6:14"],
     ["N80XRg_NWSI", "5 Minute Evening Stretch", "Body Fix Exercises", "6:00"],
     ["CqUs9NFPgoE", "Before Bed When Your Mind Is Still Awake", "Breathe and Flow", "5:38"],
+    // 12–16 min
+    ["mjf7Fkmuxhc", "Relaxing Evening Flexibility Routine", "Tom Merrick", "14:04"],
+    ["1u30bEkE2dE", "15 Minute Relaxed Stretching Routine", "Tom Merrick", "15:59"],
+    ["u_eBTabTA0M", "Evening Flexibility Routine", "Tom Merrick × Vivobarefoot", "12:36"],
+    ["3u9z9lg9_4k", "15 Min. Bedtime Mobility", "mobility by julia reppel", "16:01"],
+    ["CLDHeV9OI5U", "10-Minute Bedtime Yoga", "Yoga With Adriene", "13:27"],
+    ["ZPwP7zjocZU", "10 min Evening Full Body Yoga Stretch", "Yoga with Kassandra", "13:30"],
+    ["5Kfv13sGbZQ", "10 Minute Evening Yoga for Better Sleep", "Yoga With Bird", "12:43"],
+    ["RI5gOBeTqyE", "Do This Before Bed When Your Body Won't Let Go", "Breathe and Flow", "14:08"],
+    ["MQs4xGn7EOk", "Evening Stretches before Bed", "Journey to Mobility", "14:51"],
+    ["9huvrKzF2ss", "15 Min Evening Stretch for Better Sleep", "Yoga With Nancy", "15:26"],
+    ["y0fms_yJwR0", "10 Min Evening Yoga Stretch — Sleep Deep", "Travis Eliot", "12:51"],
   ],
 };
