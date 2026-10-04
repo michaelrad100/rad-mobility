@@ -25,6 +25,10 @@
     --accent: #e0773a; --accent-fg: #fff; --shadow: rgba(230,120,70,.35);
     /* the icon's sun, used for the main accents in both modes */
     --sunset: linear-gradient(100deg, #ffc76a 0%, #ff9a5c 100%);
+    /* week dots: which routine you did that day, the same in both modes */
+    --am: linear-gradient(135deg, #ffc76a, #ff9a5c);
+    --pm: linear-gradient(135deg, #b05cff, #ff3ea5);
+    --ampm: linear-gradient(135deg, #ffc76a 0%, #ff9a5c 49%, #b05cff 51%, #ff3ea5 100%);
     --serif: "Fraunces", Georgia, serif;
     --retro: "Orbitron", -apple-system, sans-serif;
   }
@@ -61,9 +65,10 @@
   button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
 
   /* header */
-  header { display: flex; align-items: flex-start; justify-content: space-between; padding: 14px 0 22px; }
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 0 22px; }
   .eyebrow { font-family: var(--retro); font-size: 10.5px; font-weight: 600; letter-spacing: .22em; text-transform: uppercase; color: var(--accent); }
-  h1 { font-family: var(--serif); font-weight: 400; font-size: 36px; line-height: 1.1; letter-spacing: -0.02em; margin: 8px 0 0; }
+  /* scales down a touch on narrow phones so "Good afternoon" stays on one line next to the two buttons */
+  h1 { font-family: var(--serif); font-weight: 400; font-size: clamp(30px, 8.6vw, 36px); line-height: 1.1; letter-spacing: -0.02em; margin: 8px 0 0; }
   body.evening h1 { text-shadow: 0 0 28px rgba(255,94,168,.35); }
   .mode {
     width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
@@ -130,8 +135,12 @@
   .dot svg { width: 14px; height: 14px; stroke: var(--accent-fg); opacity: 0; }
   .day.today .dot { box-shadow: inset 0 0 0 1.5px var(--soft); }
   .day.today { color: var(--fg); font-weight: 600; }
-  .day.done .dot { background: var(--sunset); box-shadow: 0 4px 12px -4px var(--shadow); }
+  /* plain fill = finished before morning/evening was tracked */
+  .day.done .dot { background: var(--muted); box-shadow: 0 4px 12px -4px var(--shadow); }
   .day.done .dot svg { opacity: 1; }
+  .day.done.am .dot { background: var(--am); }
+  .day.done.pm .dot { background: var(--pm); }
+  .day.done.am.pm .dot { background: var(--ampm); }
   .day.pop .dot { animation: pop .6s ease; }
   @keyframes pop { 40% { transform: scale(1.25); } }
 
@@ -177,6 +186,34 @@
   .toast button { font-weight: 700; color: #d6337f; }
   body:not(.evening) .toast button { color: #ffc76a; }
   .toast.show { opacity: .95; transform: translate(-50%, 0); }
+
+  /* favorites: everything you've given a thumbs up */
+  .actions { display: flex; gap: 10px; flex-shrink: 0; }
+  .sheet-wrap { position: fixed; inset: 0; z-index: 20; display: none; }
+  .sheet-wrap.show { display: block; }
+  .scrim { position: absolute; inset: 0; background: rgba(30,12,30,.35); animation: fade .25s ease; }
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0; max-height: 80dvh; overflow-y: auto; overscroll-behavior: contain;
+    background: var(--bg); border-radius: 26px 26px 0 0; padding: 20px 20px calc(env(safe-area-inset-bottom) + 20px);
+    box-shadow: 0 -12px 40px -12px var(--shadow); animation: rise .32s cubic-bezier(.2,.8,.2,1);
+  }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes rise { from { transform: translateY(40px); opacity: 0; } }
+  .sheet-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+  .sheet-head h2 { font-family: var(--serif); font-weight: 400; font-size: 26px; letter-spacing: -0.01em; margin: 4px 0 0; }
+  .sheet-head .sub { font-size: 13.5px; line-height: 1.4; color: var(--muted); margin: 4px 0 0; padding-right: 8px; }
+  .sheet-head .mode { margin-top: 0; }
+  .fav { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); transition: opacity .2s; }
+  .fav:first-child { border-top: 0; }
+  .fav.off { opacity: .45; }
+  .fav .go { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; text-align: left; }
+  .fav .go > div { flex: 1; min-width: 0; }
+  .fav img { width: 96px; aspect-ratio: 16/9; object-fit: cover; border-radius: 10px; flex-shrink: 0; background: var(--faint); }
+  .fav .t { font-family: var(--serif); font-size: 16px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .fav .s { font-size: 12.5px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .fav .thumb { flex-shrink: 0; width: 40px; height: 36px; }
+  .fav-empty { color: var(--muted); font-size: 15px; padding: 18px 0 8px; line-height: 1.5; }
+  body.sheet-open { overflow: hidden; }
   .confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 10; pointer-events: none; }
   @media (min-width: 600px) { body { max-width: 520px; margin: 0 auto; } }
 </style>
@@ -188,7 +225,10 @@
       <div class="eyebrow" id="date"></div>
       <h1 id="greeting">Good morning</h1>
     </div>
-    <button class="mode" id="mode" aria-label="Switch morning / evening"></button>
+    <div class="actions">
+      <button class="mode" id="favs" aria-label="Your favorites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg></button>
+      <button class="mode" id="mode" aria-label="Switch morning / evening"></button>
+    </div>
   </header>
 
   <div class="player" id="card">
@@ -229,6 +269,17 @@
   <label class="pref">Play in the YouTube app <input type="checkbox" class="switch" id="appmode"></label>
   <div class="toast" id="toast"></div>
 
+  <div class="sheet-wrap" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="scrim" id="scrim"></div>
+    <div class="sheet">
+      <div class="sheet-head">
+        <div><h2 id="sheet-title">Your favorites</h2><p class="sub">Every video you've given a thumbs up. These come around more often.</p></div>
+        <button class="mode" id="sheet-close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div id="fav-list"></div>
+    </div>
+  </div>
+
 <script src="videos.js"></script>
 <script>
   // ---- storage (safe if localStorage is unavailable) ----
@@ -241,12 +292,13 @@
   const lastShown = store.get("lastShown", {});         // id -> timestamp
   const current = store.get("current", {});            // mode -> {id, at}
   const doneDays = new Set(store.get("doneDays", []));  // "YYYY-MM-DD" days you finished a routine
+  const sessions = store.get("sessions", {});           // "YYYY-MM-DD" -> ["morning", "evening"]: which ones
   let appMode = store.get("appMode", false);             // play in the YouTube app (ad-free with Premium)
 
   const autoMode = () => { const h = new Date().getHours(); return (h >= 18 || h < 4) ? "evening" : "morning"; };
   let mode = autoMode();
   let lastAuto = mode;   // a manual switch sticks until the clock crosses 6pm / 4am
-  let video = null, player = null, ready = false, progressTimer = null;
+  let video = null, videoMode = mode, player = null, ready = false, progressTimer = null;
   let reached = false, celebrated = false;   // this video: past 80% / confetti already popped
 
   const $ = (id) => document.getElementById(id);
@@ -274,25 +326,32 @@
       const d = new Date(monday); d.setDate(monday.getDate() + i);
       const k = dayKey(d), isToday = k === dayKey(today);
       const el = document.createElement("div");
-      el.className = "day" + (doneDays.has(k) ? " done" : "") + (isToday ? " today" : "") + (isToday && popToday ? " pop" : "");
+      const s = sessions[k] || [];   // days from before this was tracked just get the plain fill
+      el.className = "day" + (doneDays.has(k) ? " done" : "") + (s.includes("morning") ? " am" : "") + (s.includes("evening") ? " pm" : "")
+                   + (isToday ? " today" : "") + (isToday && popToday ? " pop" : "");
+      el.setAttribute("aria-label", s.length ? s.join(" and ") + " done" : doneDays.has(k) ? "done" : "not done");
       el.innerHTML = `${"MTWTFSS"[i]}<div class="dot">${CHECK}</div>`;
       $("days").appendChild(el);
     }
     let streak = 0; const d = new Date(today);
     if (!doneDays.has(dayKey(d))) d.setDate(d.getDate() - 1);   // today not done yet doesn't break the streak
     while (doneDays.has(dayKey(d))) { streak++; d.setDate(d.getDate() - 1); }
-    $("streak").textContent = streak > 1 ? `${streak}-day streak` : doneDays.has(dayKey(today)) ? "Done today ✓" : "";
+    const both = (sessions[dayKey(today)] || []).length === 2;
+    $("streak").textContent = streak > 1 ? `${streak}-day streak` : both ? "Morning + evening ✓" : doneDays.has(dayKey(today)) ? "Done today ✓" : "";
   }
 
-  function saveToday() {
-    const k = dayKey(new Date());
-    if (doneDays.has(k)) return;
-    doneDays.add(k); store.set("doneDays", [...doneDays]); renderWeek();
+  // m: which routine was finished, so the day's dot can show morning, evening, or both.
+  function saveToday(m = videoMode) {
+    const k = dayKey(new Date()), s = sessions[k] || [];
+    if (doneDays.has(k) && s.includes(m)) return;
+    doneDays.add(k); store.set("doneDays", [...doneDays]);
+    if (!s.includes(m)) { sessions[k] = [...s, m]; store.set("sessions", sessions); }
+    renderWeek();
   }
 
   // A video was completed: count the day and celebrate, once per video.
-  function markDone() {
-    saveToday();
+  function markDone(m = videoMode) {
+    saveToday(m);
     if (celebrated) return;
     celebrated = true;
     renderWeek(true); confetti();
@@ -344,7 +403,7 @@
   }
 
   function show(v, animate) {
-    video = v; reached = celebrated = false;
+    video = v; videoMode = mode; reached = celebrated = false;
     if (!v) {
       $("channel").textContent = ""; $("title").textContent = "You've thumbed-down everything here.";
       toast("Bring them all back?", () => { VIDEOS[mode].forEach(x => blocked.delete(x[0])); store.set("blocked", [...blocked]); show(pick(), true); }, "Restore");
@@ -388,7 +447,7 @@
   $("up").onclick = () => {
     if (!video) return;
     const id = video[0];
-    if (liked.has(id)) liked.delete(id); else { liked.add(id); toast("Saved. You'll see this one more often."); }
+    if (liked.has(id)) liked.delete(id); else { liked.add(id); toast("Added to your favorites", openFavs, "View"); }
     store.set("liked", [...liked]); $("up").classList.toggle("on", liked.has(id));
   };
   $("down").onclick = () => {
@@ -399,7 +458,7 @@
     toast("Removed from your queue", () => { blocked.delete(v[0]); store.set("blocked", [...blocked]); show(v, true); });
   };
   // Leaving for the YouTube app: remember what was playing so we can ask "Finished?" on return.
-  const handoff = () => { if (video) store.set("pending", { id: video[0], title: video[1], at: Date.now() }); };
+  const handoff = () => { if (video) store.set("pending", { id: video[0], title: video[1], mode: videoMode, at: Date.now() }); };
   $("applink").addEventListener("click", handoff);
   $("open").addEventListener("click", handoff);
 
@@ -413,7 +472,7 @@
     $("finish").classList.add("show");
   }
   const closeFinish = () => { $("finish").classList.remove("show"); store.set("pending", null); };
-  $("finish-yes").onclick = () => { closeFinish(); celebrated = false; markDone(); next(); };   // line up a fresh one for next time
+  $("finish-yes").onclick = () => { const p = store.get("pending", {}) || {}; closeFinish(); celebrated = false; markDone(p.mode); next(); };   // line up a fresh one for next time
   $("finish-no").onclick = closeFinish;
 
   $("appmode").checked = appMode;
@@ -424,6 +483,50 @@
     toast(appMode ? "Videos will open in the YouTube app" : "Videos will play here");
   };
   $("mode").onclick = () => { mode = mode === "evening" ? "morning" : "evening"; applyMode(); show(initial(), true); };
+
+  // ---- favorites sheet: every thumbs-up video, newest first ----
+  const UP_ICON = $("up").innerHTML;
+  function renderFavs() {
+    const list = $("fav-list"); list.innerHTML = "";
+    const items = [...liked].reverse().map(id => {
+      const m = VIDEOS[mode].some(x => x[0] === id) ? mode : ["morning", "evening"].find(k => VIDEOS[k].some(x => x[0] === id));
+      return m && !blocked.has(id) ? { v: VIDEOS[m].find(x => x[0] === id), m } : null;
+    }).filter(Boolean);
+    if (!items.length) {
+      list.innerHTML = '<div class="fav-empty">Nothing here yet. Tap the thumbs up on a video you love and it\'ll be saved here.</div>';
+      return;
+    }
+    for (const { v, m } of items) {
+      const row = document.createElement("div"); row.className = "fav";
+      row.innerHTML = `<button class="go"><img alt="" loading="lazy"><div><div class="t"></div><div class="s"></div></div></button><button class="thumb on" aria-label="Remove thumbs up">${UP_ICON}</button>`;
+      row.querySelector("img").src = `https://i.ytimg.com/vi/${v[0]}/mqdefault.jpg`;
+      row.querySelector(".t").textContent = v[1];
+      row.querySelector(".s").textContent = `${v[2]} · ${v[3]} · ${m === "evening" ? "Evening" : "Morning"}`;
+      row.querySelector(".go").onclick = () => {
+        closeFavs();
+        if (m !== mode) { mode = m; applyMode(); }
+        show(v, true); scrollTo({ top: 0, behavior: "smooth" });
+      };
+      // Un-thumbing leaves the row in place (dimmed) so a mis-tap is easy to undo.
+      const t = row.querySelector(".thumb");
+      t.onclick = () => {
+        if (liked.has(v[0])) liked.delete(v[0]); else liked.add(v[0]);
+        store.set("liked", [...liked]);
+        t.classList.toggle("on", liked.has(v[0])); row.classList.toggle("off", !liked.has(v[0]));
+        if (video && video[0] === v[0]) $("up").classList.toggle("on", liked.has(v[0]));
+      };
+      list.appendChild(row);
+    }
+  }
+  function openFavs() {
+    renderFavs();
+    $("sheet").classList.add("show"); document.body.classList.add("sheet-open");
+    $("sheet").querySelector(".sheet").scrollTop = 0; $("sheet-close").focus();
+  }
+  function closeFavs() { $("sheet").classList.remove("show"); document.body.classList.remove("sheet-open"); }
+  $("favs").onclick = openFavs;
+  $("sheet-close").onclick = $("scrim").onclick = closeFavs;
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeFavs(); });
 
 
   // When the app comes back from the background and the time of day has flipped, follow it.
