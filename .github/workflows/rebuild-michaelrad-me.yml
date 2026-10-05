@@ -15,4 +15,6 @@ jobs:
     env:
       RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
     steps:
-      - run: railway redeploy --service michaelrad-me --yes
+      # A plain redeploy can reuse a cached build and keep serving the old app. Changing a variable
+      # to the new commit makes Railway build from scratch (and deploy on its own).
+      - run: railway variables --service michaelrad-me --set "MOBILITY_SHA=${GITHUB_SHA}"
