@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
-<!-- Bump by one with every change merged to main; shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="19">
+<!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
+<meta name="version" content="2.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -640,7 +640,8 @@
 
   // ---- update notice: when the app comes back, check whether a newer version has been published ----
   // Compares the version we're running with the one in the live page, so it works wherever the app is hosted.
-  const VERSION = +document.querySelector('meta[name="version"]').content;
+  const VERSION = document.querySelector('meta[name="version"]').content;
+  const newer = (a, b) => { const [am, an] = a.split(".").map(Number), [bm, bn] = b.split(".").map(Number); return am > bm || (am === bm && an > bn); };
   $("version").textContent = `Version ${VERSION}`;
   let lastCheck = 0;
   async function checkUpdate() {
@@ -648,8 +649,8 @@
     lastCheck = Date.now();
     try {
       const html = await (await fetch(location.pathname, { cache: "no-store" })).text();
-      const live = +(html.match(/<meta name="version" content="(\d+)"/) || [])[1];
-      if (live > VERSION) toast(`Version ${live} is ready`, () => location.reload(), "Reload");
+      const live = (html.match(/<meta name="version" content="(\d+\.\d+)"/) || [])[1];
+      if (live && newer(live, VERSION)) toast(`Version ${live} is ready`, () => location.reload(), "Reload");
     } catch {}
   }
   setTimeout(checkUpdate, 3000);   // a launch can still show a cached copy for a few minutes
