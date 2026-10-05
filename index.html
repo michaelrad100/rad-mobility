@@ -210,6 +210,17 @@
   .toast button { font-weight: 700; color: #d6337f; }
   body:not(.evening) .toast button { color: #ffc76a; }
   .toast.show { opacity: .95; transform: translate(-50%, 0); }
+  /* Pull-to-refresh: home-screen apps on iPhone don't get Safari's, so we draw our own. Tucked above the top edge until you pull. */
+  .pull {
+    position: fixed; z-index: 20; left: 50%; top: calc(env(safe-area-inset-top) - 44px); width: 38px; height: 38px; margin-left: -19px; border-radius: 50%;
+    display: grid; place-items: center; background: var(--bg); color: var(--muted); box-shadow: 0 6px 18px -6px var(--shadow), 0 0 0 1px var(--line);
+    opacity: 0; pointer-events: none; transition: transform .25s, opacity .25s, color .2s;
+  }
+  .pull.pulling { transition: color .2s; }
+  .pull.ready { color: var(--accent); }
+  .pull svg { width: 18px; height: 18px; }
+  .pull.spin svg { animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 20; pointer-events: none; }
   @media (min-width: 600px) { body { max-width: 520px; margin: 0 auto; } }
 </style>
@@ -267,6 +278,7 @@
   </button>
   <label class="pref">Play in the YouTube app <input type="checkbox" class="switch" id="appmode"></label>
   <div class="toast" id="toast"></div>
+  <div class="pull" id="pull" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4.5h-4.5"/></svg></div>
 
 <script src="videos.js"></script>
 <script>
@@ -487,10 +499,50 @@
   document.addEventListener("visibilitychange", () => {
     if (document.hidden) return;
     renderWeek(); applyMode();   // refresh date + morning/afternoon greeting
-    checkFinished();
+    checkFinished(); checkUpdate();
     if (autoMode() === lastAuto) return;
     mode = lastAuto = autoMode(); applyMode(); show(initial(), true);
   });
+
+  // ---- pull down from the top to reload the whole app ----
+  const PULL = 80;   // how far to drag before letting go reloads
+  let pullFrom = null, pulled = 0;
+  addEventListener("touchstart", (e) => {
+    const ok = scrollY <= 0 && e.touches.length === 1 && !document.body.classList.contains("theater");
+    pullFrom = ok ? e.touches[0].clientY : null; pulled = 0;
+  }, { passive: true });
+  addEventListener("touchmove", (e) => {
+    if (pullFrom === null) return;
+    pulled = Math.max(0, e.touches[0].clientY - pullFrom);
+    const p = $("pull");
+    p.classList.add("pulling"); p.classList.toggle("ready", pulled >= PULL);
+    p.style.opacity = Math.min(1, pulled / PULL);
+    p.style.transform = `translateY(${Math.min(pulled, PULL * 1.4) * 0.75}px)`;
+    p.querySelector("svg").style.transform = `rotate(${pulled * 3}deg)`;
+  }, { passive: true });
+  const letGo = () => {
+    if (pullFrom === null) return;
+    pullFrom = null;
+    const p = $("pull"); p.classList.remove("pulling");
+    if (pulled >= PULL) { p.classList.add("spin"); setTimeout(() => location.reload(), 250); return; }
+    p.classList.remove("ready"); p.style.opacity = 0; p.style.transform = "";
+  };
+  addEventListener("touchend", letGo);
+  addEventListener("touchcancel", letGo);
+
+  // ---- update notice: when the app comes back, check whether a newer version has been published ----
+  // document.lastModified is the date of the copy we're running; the live page's Last-Modified is the latest one.
+  let lastCheck = 0;
+  async function checkUpdate() {
+    if (Date.now() - lastCheck < 60e3 || document.body.classList.contains("theater")) return;   // not mid-video
+    lastCheck = Date.now();
+    try {
+      const r = await fetch(location.pathname, { method: "HEAD", cache: "no-store" });
+      const live = Date.parse(r.headers.get("last-modified")), mine = Date.parse(document.lastModified);
+      if (live - mine > 5e3) toast("New version ready", () => location.reload(), "Reload");
+    } catch {}
+  }
+  setTimeout(checkUpdate, 3000);   // a launch can still show a cached copy for a few minutes
 
   applyMode();
   renderWeek();
