@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Time Train</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Time Train">
+<meta name="theme-color" content="#f4f6fb">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=Nunito:wght@600;800;900&display=swap" rel="stylesheet">
+<style>
+  /* The book's timeline as a train route: each era is a colored line, each spread a stop. */
+  :root {
+    --paper: #f4f6fb; --ink: #1d2550; --muted: #6b7394; --card: #fff; --rule: #dde2f0;
+    --board: #1d2550; --amber: #ffc845;
+    --line: #2fb36b;   /* current era's color, set from JS */
+    --sign: "Bungee", "Arial Black", Impact, sans-serif;
+    --body: "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--paper); color: var(--ink);
+    /* faint map grid */
+    background-image: radial-gradient(circle, rgba(29,37,80,.07) 1.2px, transparent 1.4px); background-size: 22px 22px;
+    font: 17px/1.4 var(--body); font-weight: 600;
+    padding: calc(env(safe-area-inset-top) + 10px) 18px calc(env(safe-area-inset-bottom) + 18px);
+    display: flex; flex-direction: column; gap: 14px; min-height: 100dvh;
+    max-width: 760px; margin: 0 auto;
+    -webkit-font-smoothing: antialiased; -webkit-user-select: none; user-select: none;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+  button:focus-visible, input:focus-visible { outline: 3px solid var(--amber); outline-offset: 2px; }
+
+  /* top bar */
+  .top { display: flex; align-items: center; gap: 10px; padding-top: 6px; }
+  .brand { display: flex; align-items: center; gap: 9px; margin-right: auto; }
+  .brand img { width: 38px; height: 38px; border-radius: 10px; box-shadow: 0 3px 8px rgba(29,37,80,.25); }
+  .brand b { font-family: var(--sign); font-weight: 400; font-size: 25px; letter-spacing: .02em; line-height: 1; }
+  .brand b span { color: var(--line); transition: color .4s; }
+  .icon-btn { width: 44px; height: 44px; border-radius: 14px; background: var(--card); border: 2px solid var(--rule);
+    display: grid; place-items: center; color: var(--ink); position: relative; }
+  .icon-btn svg { width: 22px; height: 22px; }
+  .icon-btn:active { transform: scale(.95); }
+  /* press-and-hold ring on the grown-ups button */
+  .icon-btn .hold { position: absolute; inset: -2px; border-radius: 14px; pointer-events: none;
+    background: conic-gradient(var(--ink) calc(var(--p, 0) * 1turn), transparent 0); opacity: .18; }
+
+  /* departure board */
+  .board { background: var(--board); color: #fff; border-radius: 22px; padding: 16px 18px 18px; position: relative; overflow: hidden;
+    box-shadow: 0 10px 24px -12px rgba(29,37,80,.6); }
+  .board::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 8px; background: var(--line); transition: background .4s; }
+  .board .row { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .board .label { font-family: var(--sign); color: var(--amber); font-size: 14px; letter-spacing: .06em; }
+  .board .page { font-size: 14px; color: #c6cbe6; white-space: nowrap; }
+  .board .stop { font-family: var(--sign); font-weight: 400; font-size: clamp(26px, 7.4vw, 40px); line-height: 1.05; margin: 8px 0 12px; text-wrap: balance; }
+  .board .stop.arrive { animation: flip .5s ease; }
+  @keyframes flip { 0% { transform: rotateX(80deg); opacity: 0; } 100% { transform: none; opacity: 1; } }
+  .line-chip { display: inline-flex; align-items: center; gap: 8px; background: var(--line); color: #fff; padding: 5px 12px 5px 8px;
+    border-radius: 999px; font-weight: 900; font-size: 14px; transition: background .4s; }
+  .line-chip i { width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 4px var(--line); }
+  .line-chip small { font-weight: 700; opacity: .85; }
+
+  .heads-up { display: none; align-items: center; gap: 12px; background: #fff4d6; border: 2px solid #f5c95b; color: #6a4a00;
+    border-radius: 16px; padding: 10px 14px; font-weight: 800; font-size: 15px; line-height: 1.3; }
+  .heads-up.show { display: flex; }
+  .heads-up svg { width: 28px; height: 28px; flex-shrink: 0; }
+
+  /* player */
+  .player { position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 20px; overflow: hidden; background: #0e1330;
+    box-shadow: 0 0 0 4px var(--card), 0 0 0 7px var(--line), 0 16px 34px -14px rgba(29,37,80,.55); transition: box-shadow .4s; }
+  .player iframe, #yt { position: absolute; inset: 0; width: 100%; height: 100%; }
+  /* the ticket and "see you tomorrow" screens need more room than a 16:9 frame has on a phone */
+  .player.tall { aspect-ratio: auto; min-height: max(330px, 56.25vw); }
+  /* Taps fall through the poster to YouTube's own player so iPad starts it with sound. */
+  .poster { position: absolute; inset: 0; pointer-events: none; transition: opacity .3s; }
+  .poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .poster::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 50%, rgba(14,19,48,.55)); }
+  .poster .go { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; width: 86px; height: 86px; border-radius: 50%;
+    background: var(--amber); display: grid; place-items: center; box-shadow: 0 8px 0 #d69d12, 0 14px 26px rgba(0,0,0,.35); }
+  .poster .go svg { width: 34px; height: 34px; margin-left: 6px; fill: var(--ink); }
+  .poster .len { position: absolute; right: 12px; bottom: 12px; z-index: 1; font-weight: 900; font-size: 13px; color: #fff;
+    background: rgba(14,19,48,.7); padding: 4px 10px; border-radius: 999px; }
+  .poster.hidden { opacity: 0; }
+  /* Invisible shields over YouTube's title bar and logo, so a tap can't wander off to YouTube. */
+  .shield { position: absolute; z-index: 2; display: none; }
+  .player.playing .shield { display: block; }
+  .shield.top { left: 0; right: 0; top: 0; height: 22%; }
+  .shield.logo { right: 0; bottom: 0; width: 120px; height: 52px; }
+  /* In the last stretch, YouTube shows clickable "watch next" tiles; the whole player is shielded then. */
+  .player.endzone .shield.top { height: 100%; }
+
+  .cover { position: absolute; inset: 0; z-index: 3; display: none; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 16px; text-align: center; color: #fff; background: rgba(14,19,48,.92); }
+  .cover.show { display: flex; animation: fade .3s ease; }
+  @keyframes fade { from { opacity: 0; } }
+  .cover h2 { font-family: var(--sign); font-weight: 400; font-size: clamp(20px, 5.4vw, 30px); margin: 0; line-height: 1.1; text-wrap: balance; }
+  .cover p { margin: 0; color: #c6cbe6; font-size: 16px; max-width: 30ch; }
+  .big-btn { font-family: var(--sign); font-size: 18px; background: var(--amber); color: var(--ink); padding: 14px 22px; border-radius: 999px;
+    box-shadow: 0 5px 0 #d69d12; display: inline-flex; align-items: center; gap: 10px; }
+  .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #d69d12; }
+  .big-btn svg { width: 18px; height: 18px; fill: currentColor; }
+  .cover.paused { background: rgba(14,19,48,.72); }
+
+  /* the punched ticket */
+  .ticket { position: relative; background: #fff8e7; color: var(--ink); border-radius: 12px; padding: 12px 22px 12px 16px; min-width: 220px; max-width: 86%;
+    text-align: left; display: grid; gap: 2px; border-left: 12px solid var(--line);
+    -webkit-mask: radial-gradient(circle 10px at 100% 50%, transparent 98%, #000) ; mask: radial-gradient(circle 10px at 100% 50%, transparent 98%, #000); }
+  .ticket small { font-family: var(--sign); font-size: 11px; color: var(--muted); letter-spacing: .08em; }
+  .ticket b { font-weight: 900; font-size: 17px; line-height: 1.2; }
+  .ticket-wrap { position: relative; max-width: 86%; }
+  .ticket-wrap .ticket { max-width: none; padding-right: 84px; }   /* room for the stamp in the corner */
+  .stamp { position: absolute; right: -12px; top: -14px; font-family: var(--sign); font-size: 15px; color: #e5484d; border: 3px solid #e5484d;
+    border-radius: 8px; padding: 2px 8px; transform: rotate(-12deg); background: #fff8e7; }
+  .cover.show .ticket { animation: slide .5s cubic-bezier(.2,1.4,.4,1); }
+  .cover.show .stamp { animation: thunk .45s .45s both cubic-bezier(.3,1.6,.5,1); }
+  @keyframes slide { from { transform: translateY(30px) scale(.9); opacity: 0; } }
+  @keyframes thunk { from { transform: rotate(-12deg) scale(2.4); opacity: 0; } }
+
+  /* route strip for the current line */
+  .route { background: var(--card); border: 2px solid var(--rule); border-radius: 20px; padding: 14px 16px 12px; text-align: left; width: 100%; }
+  .route-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 14px; }
+  .route-head b { font-weight: 900; }
+  .route-head span { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .track { position: relative; display: grid; align-items: center; margin: 14px 2px 4px; }
+  .track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; background: var(--line); opacity: .28; }
+  .track .fill { position: absolute; left: 0; top: 50%; height: 6px; margin-top: -3px; border-radius: 3px; background: var(--line); transition: width .6s; }
+  .track .st { position: relative; justify-self: center; width: min(14px, 90%); aspect-ratio: 1; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px var(--line); }
+  .track .st.done { background: var(--line); }
+  .track .st.here { width: 24px; z-index: 1; background: #fff; box-shadow: inset 0 0 0 4px var(--ink), 0 0 0 4px rgba(255,200,69,.7); animation: beat 1.6s infinite; }
+  @keyframes beat { 50% { box-shadow: inset 0 0 0 4px var(--ink), 0 0 0 9px rgba(255,200,69,0); } }
+  .all { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 10px; gap: 2px; }
+  .all i { display: block; height: 100%; position: relative; background: var(--c); opacity: .25; }
+  .all i b { position: absolute; inset: 0; right: auto; background: var(--c); }
+  .all-cap { font-size: 13px; color: var(--muted); margin-top: 6px; display: flex; justify-content: space-between; }
+
+  /* sheets */
+  .sheet-bg { position: fixed; inset: 0; z-index: 20; background: rgba(14,19,48,.45); display: none; align-items: flex-end; justify-content: center; }
+  .sheet-bg.show { display: flex; animation: fade .2s; }
+  .sheet { background: var(--paper); width: 100%; max-width: 760px; max-height: 88dvh; overflow: auto; border-radius: 26px 26px 0 0;
+    padding: 18px 18px calc(env(safe-area-inset-bottom) + 22px); animation: up .3s cubic-bezier(.2,1,.3,1); -webkit-user-select: text; user-select: text; }
+  @keyframes up { from { transform: translateY(40px); opacity: 0; } }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .sheet-head h3 { font-family: var(--sign); font-weight: 400; font-size: 22px; margin: 0; }
+  .close { font-weight: 900; color: var(--muted); padding: 8px 4px; }
+  .era { margin-top: 18px; }
+  .era h4 { margin: 0 0 4px; display: flex; align-items: center; gap: 10px; font-family: var(--sign); font-weight: 400; font-size: 16px; }
+  .era h4 i { width: 34px; height: 8px; border-radius: 4px; background: var(--c); }
+  .era h4 small { font-family: var(--body); font-weight: 800; color: var(--muted); font-size: 13px; margin-left: auto; }
+  .stops { list-style: none; margin: 0; padding: 0 0 0 4px; position: relative; }
+  .stops::before { content: ""; position: absolute; left: 61px; top: 10px;   /* page number + gap + half a dot */ bottom: 10px; width: 6px; border-radius: 3px; background: var(--c); opacity: .3; }
+  .stops li { position: relative; display: flex; align-items: center; gap: 12px; padding: 5px 0; font-size: 15px; }
+  .stops li i { flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 4px var(--c); z-index: 1; }
+  .stops li.done i { background: var(--c); }
+  .stops li.done { color: var(--ink); }
+  .stops li:not(.done) { color: var(--muted); }
+  .stops li.here { font-weight: 900; color: var(--ink); }
+  .stops li.here i { box-shadow: inset 0 0 0 5px var(--ink), 0 0 0 4px rgba(255,200,69,.8); }
+  .stops li em { font-style: normal; font-size: 12px; color: var(--muted); width: 36px; flex-shrink: 0; text-align: right; font-variant-numeric: tabular-nums; }
+
+  .grown { display: grid; gap: 10px; }
+  .grown .now { background: var(--card); border: 2px solid var(--rule); border-radius: 16px; padding: 12px 14px; font-size: 15px; }
+  .grown .now b { font-weight: 900; }
+  .grown .now a { color: var(--ink); }
+  .grown .note { color: #8a5a00; font-weight: 800; margin-top: 6px; }
+  .grown .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grown button.opt { background: var(--card); border: 2px solid var(--rule); border-radius: 14px; padding: 12px; font-weight: 800; font-size: 15px; text-align: left; }
+  .grown button.opt:active { background: var(--rule); }
+  .grown .field { display: flex; align-items: center; gap: 10px; background: var(--card); border: 2px solid var(--rule); border-radius: 14px; padding: 10px 12px; font-weight: 800; font-size: 15px; }
+  .seg { margin-left: auto; display: flex; background: var(--rule); border-radius: 10px; padding: 3px; }
+  .seg button { padding: 6px 12px; border-radius: 8px; font-weight: 900; }
+  .seg button.on { background: var(--ink); color: #fff; }
+  .field #g-unit { margin-left: 4px; }
+  .field input { margin-left: auto; width: 64px; font: inherit; font-weight: 800; padding: 6px 8px; border-radius: 8px; border: 2px solid var(--rule); background: var(--paper); color: var(--ink); }
+  .field .go-btn { background: var(--ink); color: #fff; border-radius: 8px; padding: 7px 12px; font-weight: 900; }
+  .fine { font-size: 13px; color: var(--muted); }
+
+  .toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 14px); transform: translate(-50%, -8px); z-index: 30;
+    background: var(--ink); color: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 800; font-size: 15px;
+    opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: .96; transform: translate(-50%, 0); }
+  .confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 25; pointer-events: none; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+  <div class="top">
+    <div class="brand"><img src="icon.png" alt=""><b>Time <span>Train</span></b></div>
+    <button class="icon-btn" id="map-btn" aria-label="Route map">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="6" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M7.2 6H14a3.5 3.5 0 0 1 0 7H10a3.5 3.5 0 0 0 0 7h6.8"/></svg>
+    </button>
+    <button class="icon-btn" id="grown-btn" aria-label="Grown-ups: press and hold">
+      <span class="hold" id="hold"></span>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10.5" width="14" height="10" rx="2.5"/><path d="M8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3"/></svg>
+    </button>
+  </div>
+
+  <section class="board" aria-live="polite">
+    <div class="row"><span class="label" id="board-label">Next stop</span><span class="page" id="page"></span></div>
+    <div class="stop" id="stop-name">All aboard!</div>
+    <span class="line-chip"><i></i><span id="line-name"></span> <small id="line-dates"></small></span>
+  </section>
+
+  <div class="heads-up" id="heads-up">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="7" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M2.5 20c0-3.3 2.5-6 5.5-6s5.5 2.7 5.5 6M13.5 20c.2-2.6 1.6-4.6 3.5-4.6s3.4 2 3.5 4.6"/></svg>
+    <span id="heads-up-text"></span>
+  </div>
+
+  <div class="player" id="player">
+    <div id="yt"></div>
+    <div class="poster" id="poster">
+      <img id="thumb" alt="">
+      <div class="go"><svg viewBox="0 0 24 24"><path d="M6 3.8v16.4L20 12z"/></svg></div>
+      <div class="len" id="len"></div>
+    </div>
+    <div class="shield top"></div>
+    <div class="shield logo"></div>
+    <div class="cover paused" id="paused">
+      <button class="big-btn" id="resume"><svg viewBox="0 0 24 24"><path d="M6 3.8v16.4L20 12z"/></svg>Keep going</button>
+    </div>
+    <div class="cover" id="done">
+      <div class="ticket-wrap"><div class="ticket"><small id="t-line"></small><b id="t-stop"></b><small id="t-page"></small></div><span class="stamp">Punched!</span></div>
+      <h2 id="done-title">Ticket punched!</h2>
+      <p id="done-msg"></p>
+      <button class="big-btn" id="onward"></button>
+    </div>
+    <div class="cover" id="rest">
+      <h2>That's today's stop!</h2>
+      <p id="rest-msg"></p>
+    </div>
+  </div>
+
+  <button class="route" id="route" aria-label="Open the route map">
+    <div class="route-head"><b id="route-name"></b><span id="route-count"></span></div>
+    <div class="track" id="track"></div>
+    <div class="all" id="all"></div>
+    <div class="all-cap"><span>Big Bang</span><span id="punched"></span><span>Today</span></div>
+  </button>
+
+  <div class="sheet-bg" id="map-sheet"><div class="sheet">
+    <div class="sheet-head"><h3>Route map</h3><button class="close" data-close>Done</button></div>
+    <div id="map"></div>
+  </div></div>
+
+  <div class="sheet-bg" id="grown-sheet"><div class="sheet">
+    <div class="sheet-head"><h3>Grown-ups</h3><button class="close" data-close>Done</button></div>
+    <div class="grown">
+      <div class="now" id="g-now"></div>
+      <div class="btns">
+        <button class="opt" id="g-backup"></button>
+        <button class="opt" id="g-skip">Skip this stop</button>
+        <button class="opt" id="g-back">Back one stop</button>
+        <button class="opt" id="g-more">One more video today</button>
+      </div>
+      <div class="field">Videos per day
+        <div class="seg" id="g-perday"><button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button></div>
+      </div>
+      <div class="field"><label for="g-to">Go to</label>
+        <div class="seg" id="g-unit"><button data-u="day">Day</button><button data-u="page">Page</button></div>
+        <input id="g-to" type="number" inputmode="numeric" min="1"><button class="go-btn" id="g-go">Go</button></div>
+      <p class="fine">Hold the lock button for a second to open this. Tickets and settings are saved on this device only.</p>
+    </div>
+  </div></div>
+
+  <div class="toast" id="toast"></div>
+
+<script src="videos.js"></script>
+<script>
+  const ERAS = {
+    "Prehistory":        { name: "Prehistory Line",  dates: "Before 3000 BCE",   color: "#2fb36b" },
+    "Ancient World":     { name: "Ancient Line",     dates: "3000 BCE – 500 CE", color: "#f0960e" },
+    "Medieval World":    { name: "Medieval Line",    dates: "500 – 1450",        color: "#8b5cf6" },
+    "Age of Encounters": { name: "Encounters Line",  dates: "1450 – 1750",       color: "#1e9be8" },
+    "Age of Revolution": { name: "Revolution Line",  dates: "1750 – 1914",       color: "#ef4444" },
+    "Modern World":      { name: "Modern Line",      dates: "After 1914",        color: "#ec4899" },
+  };
+  const ERA_ORDER = Object.keys(ERAS);
+  // window.STOPS rows: [page, era, topic, main, backup, flag]
+  const S = STOPS.map(([p, era, topic, a, b, f]) => ({ p, era, topic, a, b, f }));
+
+  // ---- storage (keys prefixed: this app shares a website with Rad Mobility) ----
+  const store = {
+    get(k, d) { try { return JSON.parse(localStorage.getItem("tt-" + k)) ?? d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem("tt-" + k, JSON.stringify(v)); } catch {} },
+  };
+  let pos = store.get("pos", 0);                        // index of the stop we're at
+  const punched = new Set(store.get("punched", []));    // pages finished
+  const useBackup = new Set(store.get("backup", []));   // pages switched to their backup video
+  let perDay = store.get("perDay", 1);
+  const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = () => { const t = store.get("today", {}); return t.d === dayKey() ? t : { d: dayKey(), n: 0, extra: 0 }; };
+  const canWatch = () => { const t = today(); return t.n < perDay + t.extra; };
+
+  const $ = (id) => document.getElementById(id);
+  const stop = () => S[pos];
+  const vid = (s) => useBackup.has(s.p) ? s.b : s.a;
+  let player = null, ready = false, timer = null, finished = false, reached = false;
+
+  // ---- board + route ----
+  function paintBoard(arrive) {
+    const s = stop();
+    if (!s) return false;
+    const e = ERAS[s.era];
+    document.documentElement.style.setProperty("--line", e.color);
+    $("board-label").textContent = canWatch() ? "Next stop" : "Tomorrow's stop";
+    $("page").textContent = `Book page ${s.p}`;
+    $("stop-name").textContent = s.topic;
+    if (arrive) { const n = $("stop-name"); n.classList.remove("arrive"); void n.offsetWidth; n.classList.add("arrive"); }
+    $("line-name").textContent = e.name; $("line-dates").textContent = e.dates;
+    const hu = { together: "Grab a grown-up for this stop! It's about a hard part of history.",
+                 preview: "A grown-up should watch this one first." }[s.f];
+    $("heads-up").classList.toggle("show", !!hu); $("heads-up-text").textContent = hu || "";
+    return true;
+  }
+
+  function paint(arrive) {
+    if (!paintBoard(arrive)) return endOfLine();
+    const s = stop(), v = vid(s);
+    $("len").textContent = v[3];
+    const img = $("thumb");
+    img.onerror = () => { img.onerror = null; img.src = `https://i.ytimg.com/vi/${v[0]}/hqdefault.jpg`; };
+    img.src = `https://i.ytimg.com/vi/${v[0]}/maxresdefault.jpg`;
+    $("poster").classList.remove("hidden");
+    showCover(canWatch() ? null : "rest");
+    $("rest-msg").textContent = `The Time Train leaves again tomorrow. Next stop: ${s.topic}.`;
+    if (ready) player.cueVideoById(v[0]);
+    finished = reached = false;
+    paintRoute();
+  }
+
+  function paintRoute() {
+    const s = stop() || S[S.length - 1];
+    const line = S.filter(x => x.era === s.era), i = line.indexOf(s);
+    $("route-name").textContent = ERAS[s.era].name;
+    $("route-count").textContent = stop() ? `Stop ${i + 1} of ${line.length}` : "End of the line";
+    const t = $("track");
+    t.style.gridTemplateColumns = `repeat(${line.length}, 1fr)`;
+    const pct = line.length > 1 ? (Math.max(0, i) / (line.length - 1)) * 100 : 0;
+    t.innerHTML = `<div class="fill" style="width:${pct}%"></div>` +
+      line.map(x => `<span class="st${punched.has(x.p) ? " done" : ""}${x === stop() ? " here" : ""}"></span>`).join("");
+    $("all").innerHTML = ERA_ORDER.map(era => {
+      const l = S.filter(x => x.era === era), d = l.filter(x => punched.has(x.p)).length;
+      return `<i style="--c:${ERAS[era].color};flex:${l.length}"><b style="width:${d / l.length * 100}%"></b></i>`;
+    }).join("");
+    $("punched").textContent = `${punched.size} of ${S.length} tickets`;
+  }
+
+  function endOfLine() {
+    $("board-label").textContent = "End of the line";
+    $("page").textContent = "";
+    $("stop-name").textContent = "You rode the whole timeline!";
+    $("heads-up").classList.remove("show");
+    $("poster").classList.add("hidden");
+    $("done-title").textContent = "From the Big Bang to today!";
+    $("done-msg").textContent = `${punched.size} tickets punched. What a trip.`;
+    $("onward").hidden = true;
+    showCover("done");
+    paintRoute();
+  }
+
+  function showCover(which) {
+    for (const id of ["paused", "done", "rest"]) $(id).classList.toggle("show", id === which);
+    $("player").classList.toggle("tall", which === "done" || which === "rest");
+  }
+
+  // ---- finishing a stop ----
+  function finish() {
+    const s = stop();
+    if (finished || !s) return;
+    finished = true;
+    punched.add(s.p); store.set("punched", [...punched]);
+    const t = today(); t.n++; store.set("today", t);
+    pos++; store.set("pos", pos);
+    $("player").classList.remove("playing", "endzone");
+    $("t-line").textContent = ERAS[s.era].name.toUpperCase();
+    $("t-stop").textContent = s.topic;
+    $("t-page").textContent = `BOOK PAGE ${s.p}`;
+    document.querySelector(".ticket").style.borderLeftColor = ERAS[s.era].color;   // keeps this line's color if the next stop changes lines
+    const nx = stop();
+    $("onward").hidden = false;
+    if (!nx) { $("done-title").textContent = "Ticket punched!"; $("done-msg").textContent = "That was the very last stop!"; $("onward").hidden = true; }
+    else if (canWatch()) {
+      $("done-title").textContent = "Ticket punched!";
+      $("done-msg").textContent = nx.era !== s.era ? `All change! Next is the ${ERAS[nx.era].name}.` : "";
+      $("onward").innerHTML = `All aboard! <svg viewBox="0 0 24 24"><path d="M6 3.8v16.4L20 12z"/></svg>`;
+    } else {
+      $("done-title").textContent = "Ticket punched!";
+      $("done-msg").textContent = `That's today's stop. Tomorrow: ${nx.topic}.`;
+      $("onward").hidden = true;
+    }
+    showCover("done");
+    confetti(ERAS[s.era].color);
+    if (nx) paintBoard(true);
+    paintRoute();
+  }
+  const esc = (x) => String(x).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  $("onward").onclick = () => { showCover(null); paint(true); };
+  $("resume").onclick = () => { showCover(null); if (ready) player.playVideo(); };
+
+  // ---- confetti in the current line's color plus the other lines ----
+  function confetti(main) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const colors = [main, main, "#ffc845", ...ERA_ORDER.map(e => ERAS[e].color)];
+    const c = document.createElement("canvas"); c.className = "confetti"; document.body.appendChild(c);
+    const dpr = devicePixelRatio || 1, W = innerWidth, H = innerHeight;
+    c.width = W * dpr; c.height = H * dpr;
+    const ctx = c.getContext("2d"); ctx.scale(dpr, dpr);
+    const bits = Array.from({ length: 160 }, (_, i) => {
+      const left = i % 2 === 0, a = (left ? -60 : -120) + (Math.random() - 0.5) * 50, sp = 9 + Math.random() * 10;
+      return { x: left ? 0 : W, y: H * 0.8, vx: Math.cos(a * Math.PI / 180) * sp, vy: Math.sin(a * Math.PI / 180) * sp,
+               w: 7 + Math.random() * 6, h: 4 + Math.random() * 5, r: Math.random() * 6, vr: (Math.random() - 0.5) * 0.3,
+               color: colors[i % colors.length], round: Math.random() < 0.3 };
+    });
+    const start = performance.now();
+    (function frame(now) {
+      const t = now - start;
+      ctx.clearRect(0, 0, W, H);
+      ctx.globalAlpha = Math.max(0, Math.min(1, (3200 - t) / 800));
+      for (const b of bits) {
+        b.vx *= 0.985; b.vy = b.vy * 0.985 + 0.28; b.x += b.vx; b.y += b.vy; b.r += b.vr;
+        ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r); ctx.fillStyle = b.color; ctx.scale(1, Math.cos(t / 120 + b.r));
+        if (b.round) { ctx.beginPath(); ctx.arc(0, 0, b.h / 2 + 1, 0, 7); ctx.fill(); } else ctx.fillRect(-b.w / 2, -b.h / 2, b.w, b.h);
+        ctx.restore();
+      }
+      if (t < 3200) requestAnimationFrame(frame); else c.remove();
+    })(start);
+  }
+
+  let toastTimer;
+  function toast(msg) {
+    const t = $("toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200);
+  }
+
+  // ---- route map sheet ----
+  function openMap() {
+    $("map").innerHTML = ERA_ORDER.map(era => {
+      const e = ERAS[era];
+      return `<section class="era" style="--c:${e.color}"><h4><i></i>${e.name}<small>${e.dates}</small></h4><ol class="stops">` +
+        S.filter(x => x.era === era).map(x =>
+          `<li class="${punched.has(x.p) ? "done" : ""}${x === stop() ? " here" : ""}"><em>p.${x.p}</em><i></i>${esc(x.topic)}</li>`).join("") +
+        `</ol></section>`;
+    }).join("");
+    $("map-sheet").classList.add("show");
+    const here = $("map").querySelector(".here");
+    if (here) here.scrollIntoView({ block: "center" });
+  }
+  $("map-btn").onclick = openMap;
+  $("route").onclick = openMap;
+
+  // ---- grown-ups sheet: press and hold the lock for a second ----
+  let holdStart = 0, holdRaf = 0;
+  const holdEnd = () => { cancelAnimationFrame(holdRaf); holdStart = 0; $("hold").style.setProperty("--p", 0); };
+  $("grown-btn").addEventListener("pointerdown", (e) => {
+    e.preventDefault(); holdStart = performance.now();
+    (function tick(now) {
+      if (!holdStart) return;
+      const p = Math.min(1, (now - holdStart) / 1000); $("hold").style.setProperty("--p", p);
+      if (p >= 1) { holdEnd(); openGrown(); } else holdRaf = requestAnimationFrame(tick);
+    })(holdStart);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach(ev => $("grown-btn").addEventListener(ev, holdEnd));
+  $("grown-btn").addEventListener("click", () => { if (!$("grown-sheet").classList.contains("show")) toast("Grown-ups: press and hold"); });
+  $("grown-btn").addEventListener("contextmenu", (e) => e.preventDefault());
+
+  const NOTES = { together: "Heads-up: covers war, disaster or loss. Worth watching together.",
+                  preview: "Heavy topic for an 8-year-old. Watch it yourself before deciding.",
+                  thin: "Few kid videos exist on this topic; the pick is the best available.",
+                  older: "Made for older students. Skim it together.",
+                  region: "Introduces the region, not the conflicts." };
+  function openGrown() {
+    const s = stop();
+    if (s) {
+      const v = vid(s), t = today();
+      $("g-now").innerHTML = `<b>Day ${pos + 1} of ${S.length} · book page ${s.p}: ${esc(s.topic)}</b><br>` +
+        `<a href="https://www.youtube.com/watch?v=${v[0]}" target="_blank" rel="noopener">${esc(v[1])}</a> · ${esc(v[2])} · ${v[3]}` +
+        `<br><span class="fine">${t.n} watched today of ${perDay + t.extra} allowed · ${punched.size} of ${S.length} tickets</span>` +
+        (NOTES[s.f] ? `<div class="note">${NOTES[s.f]}</div>` : "");
+      $("g-backup").textContent = useBackup.has(s.p) ? "Use the main video" : "Use the backup video";
+    } else $("g-now").innerHTML = "<b>End of the line.</b> Every stop is done.";
+    document.querySelectorAll("#g-perday button").forEach(b => b.classList.toggle("on", +b.dataset.n === perDay));
+    setUnit(goUnit);
+    $("grown-sheet").classList.add("show");
+  }
+  const closeSheets = () => document.querySelectorAll(".sheet-bg").forEach(x => x.classList.remove("show"));
+  document.querySelectorAll("[data-close]").forEach(b => b.onclick = closeSheets);
+  document.querySelectorAll(".sheet-bg").forEach(bg => bg.addEventListener("click", (e) => { if (e.target === bg) closeSheets(); }));
+
+  const moveTo = (i, msg) => { pos = Math.max(0, Math.min(S.length, i)); store.set("pos", pos); closeSheets(); paint(true); if (msg) toast(msg); };
+  $("g-backup").onclick = () => {
+    const s = stop(); if (!s) return;
+    useBackup.has(s.p) ? useBackup.delete(s.p) : useBackup.add(s.p); store.set("backup", [...useBackup]);
+    closeSheets(); paint(true); toast(useBackup.has(s.p) ? "Switched to the backup video" : "Back to the main video");
+  };
+  $("g-skip").onclick = () => moveTo(pos + 1, "Skipped ahead one stop");
+  $("g-back").onclick = () => moveTo(pos - 1, "Went back one stop");
+  $("g-more").onclick = () => { const t = today(); t.extra++; store.set("today", t); closeSheets(); paint(true); toast("One more stop unlocked for today"); };
+  document.querySelectorAll("#g-perday button").forEach(b => b.onclick = () => {
+    perDay = +b.dataset.n; store.set("perDay", perDay);
+    document.querySelectorAll("#g-perday button").forEach(x => x.classList.toggle("on", x === b));
+    paint();
+  });
+  // Jump by day (one stop a day, so Day 1 is the Big Bang) or by book page.
+  let goUnit = "day";
+  function setUnit(u) {
+    goUnit = u;
+    document.querySelectorAll("#g-unit button").forEach(b => b.classList.toggle("on", b.dataset.u === u));
+    const s = stop() || S[S.length - 1], inp = $("g-to");
+    inp.value = u === "day" ? Math.min(pos, S.length - 1) + 1 : s.p;
+    inp.min = u === "day" ? 1 : S[0].p; inp.max = u === "day" ? S.length : S[S.length - 1].p;
+  }
+  document.querySelectorAll("#g-unit button").forEach(b => b.onclick = () => setUnit(b.dataset.u));
+  $("g-go").onclick = () => {
+    const n = Math.round(+$("g-to").value); if (!n) return;
+    let i;
+    if (goUnit === "day") i = Math.max(1, Math.min(S.length, n)) - 1;
+    else { i = S.findIndex(x => x.p >= n); if (i < 0) i = S.length - 1; }
+    moveTo(i, `Now at Day ${i + 1}: ${S[i].topic}`);
+  };
+
+  // A new day unlocks the next stop if the app was left open overnight.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && $("rest").classList.contains("show") && canWatch()) paint(); });
+
+  paint();
+
+  // ---- YouTube player ----
+  window.onYouTubeIframeAPIReady = () => {
+    const s = stop();
+    player = new YT.Player("yt", {
+      videoId: s ? vid(s)[0] : undefined,
+      // Plays inside the app (no full screen) so the covers and shields stay on top of YouTube's player.
+      playerVars: { playsinline: 1, rel: 0, fs: 0, modestbranding: 1, iv_load_policy: 3, disablekb: 1 },
+      events: {
+        onReady: () => { ready = true; },
+        onStateChange: (e) => {
+          const St = YT.PlayerState, p = $("player");
+          if (e.data === St.PLAYING || e.data === St.BUFFERING) { $("poster").classList.add("hidden"); p.classList.add("playing"); showCover(null); }
+          if (e.data === St.ENDED || (e.data === St.PAUSED && reached)) return finish();
+          // Pausing covers YouTube's "more videos" shelf with our own Keep going button.
+          if (e.data === St.PAUSED) showCover("paused");
+          clearInterval(timer);
+          if (e.data === St.PLAYING) timer = setInterval(() => {
+            const dur = player.getDuration(), now = player.getCurrentTime();
+            if (!dur) return;
+            if (now / dur >= 0.9) reached = true;
+            p.classList.toggle("endzone", dur - now <= 22);
+          }, 1000);
+        },
+        // 100 = removed, 101/150 = embedding turned off: switch to the backup, then skip if that fails too.
+        onError: (e) => {
+          const s = stop(); if (!s || ![100, 101, 150].includes(e.data)) return;
+          if (!useBackup.has(s.p)) { useBackup.add(s.p); store.set("backup", [...useBackup]); paint(); }
+          else { useBackup.delete(s.p); store.set("backup", [...useBackup]); moveTo(pos + 1, "That video's gone. Skipping ahead."); }
+        },
+      },
+    });
+  };
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
