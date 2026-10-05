@@ -198,8 +198,23 @@
 
   /* settings row */
   /* lifetime totals under the week strip */
-  .totals { margin-top: 12px; text-align: center; font-size: 12px; color: var(--muted); }
+  .totals { display: block; margin: 12px auto 0; text-align: center; font-size: 12px; color: var(--muted); }
   .totals:empty { display: none; }
+  .totals:not(:empty)::after { content: " ›"; }   /* opens the month calendar */
+  /* month calendar: the week dots, a month at a time, with the date inside */
+  .cal-head { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 4px; }
+  .cal-head b { font-family: var(--serif); font-weight: 400; font-size: 20px; }
+  .cal-nav { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--fg); background: var(--card); border: 1px solid var(--line); }
+  .cal-nav:disabled { opacity: .25; }
+  .cal-nav svg { width: 18px; height: 18px; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px 6px; text-align: center; touch-action: pan-y; }
+  .cal .dot { width: 36px; height: 36px; margin: 4px auto 0; font-size: 13px; color: var(--fg); }
+  .cal .day.done .dot { color: #fff; font-weight: 600; }
+  .cal .day.later .dot { background: none; color: var(--muted); opacity: .5; }
+  .cal-sum { margin: 14px 0 0; text-align: center; font-size: 14px; color: var(--fg); min-height: 1.4em; }
+  .cal-key { display: flex; justify-content: center; gap: 16px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .cal-key span { display: inline-flex; align-items: center; gap: 6px; }
+  .cal-key i { width: 10px; height: 10px; border-radius: 50%; }
   /* sign-in line above the version, and the sheet it opens */
   .acct { display: block; margin: 14px auto 0; font-size: 12.5px; color: var(--muted); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
   .acct[hidden] { display: none; }
@@ -326,7 +341,7 @@
   <section class="week">
     <div class="week-head"><span class="label">This week</span><span class="streak" id="streak"></span></div>
     <div class="days" id="days"></div>
-    <div class="totals" id="totals"></div>
+    <button class="totals" id="totals" aria-label="Your history, month by month"></button>
   </section>
 
   <button class="next" id="next">Show me another
@@ -365,6 +380,24 @@
     </div>
   </div>
 
+  <div class="sheet-wrap" id="hist-sheet" role="dialog" aria-modal="true" aria-labelledby="hist-title">
+    <div class="scrim" id="hist-scrim"></div>
+    <div class="sheet">
+      <div class="sheet-head">
+        <div><h2 id="hist-title">Your history</h2><p class="sub" id="hist-sub"></p></div>
+        <button class="mode" id="hist-close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
+      <div class="cal-head">
+        <button class="cal-nav" id="cal-prev" aria-label="Previous month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+        <b id="cal-month"></b>
+        <button class="cal-nav" id="cal-next" aria-label="Next month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
+      </div>
+      <div class="cal" id="cal"></div>
+      <p class="cal-sum" id="cal-sum"></p>
+      <div class="cal-key"><span><i style="background:var(--am)"></i>Morning</span><span><i style="background:var(--pm)"></i>Evening</span><span><i style="background:var(--ampm)"></i>Both</span></div>
+    </div>
+  </div>
+
 <script src="videos.js"></script>
 <script>
   // ---- storage (safe if localStorage is unavailable) ----
@@ -378,6 +411,7 @@
   const current = store.get("current", {});            // mode -> {id, at}
   const doneDays = new Set(store.get("doneDays", []));  // "YYYY-MM-DD" days you finished a routine
   const sessions = store.get("sessions", {});           // "YYYY-MM-DD" -> ["morning", "evening"]: which ones
+  const time = store.get("time", {});                   // "YYYY-MM-DD" -> {videoId: seconds}: each routine finished, by its length
   let appMode = store.get("appMode", false);             // play in the YouTube app (ad-free with Premium)
   // Each thumbs up/down also notes when it happened, so signed-in devices can merge them (newest wins).
   // Likes from before this existed get tiny times, in order, so any real change beats them.
@@ -437,28 +471,42 @@
     const both = (sessions[dayKey(today)] || []).length === 2;
     $("streak").textContent = streak > 1 ? `${streak}-day streak` : both ? "Morning + evening ✓" : doneDays.has(dayKey(today)) ? "Done today ✓" : "";
 
-    // All-time: every routine finished (morning and evening count separately), and the longest run of days in a row.
-    const days = [...doneDays].sort(), total = days.reduce((n, k) => n + Math.max(1, (sessions[k] || []).length), 0);
+    $("totals").textContent = totalsText([...doneDays], true);
+  }
+
+  // "12 sessions · 2 h 15 min · best streak 5 days" for a set of days. Morning and evening count as separate sessions;
+  // time only counts routines finished since it started being recorded.
+  const sessionsOn = (k) => Math.max(1, (sessions[k] || []).length);
+  const secondsOn = (k) => Object.values(time[k] || {}).reduce((a, b) => a + b, 0);
+  function hm(sec) { const m = Math.round(sec / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h` + (m % 60 ? ` ${m % 60} min` : ""); }
+  function totalsText(days, withStreak) {
+    days = days.sort();
+    const n = days.reduce((t, k) => t + sessionsOn(k), 0), sec = days.reduce((t, k) => t + secondsOn(k), 0);
+    if (!n) return "";
     let best = 0, run = 0, prev = null;
     for (const k of days) {
       const t = new Date(k + "T12:00").getTime();
       run = prev !== null && Math.round((t - prev) / 864e5) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = t;
     }
-    $("totals").textContent = !total ? "" : `${total} ${total === 1 ? "session" : "sessions"}` + (best > 1 ? ` · best streak ${best} days` : "");
+    return [`${n} ${n === 1 ? "session" : "sessions"}`, sec >= 60 && hm(sec), withStreak && best > 1 && `best streak ${best} days`].filter(Boolean).join(" · ");
   }
 
   // m: which routine was finished, so the day's dot can show morning, evening, or both.
-  function saveToday(m = videoMode) {
-    const k = dayKey(new Date()), s = sessions[k] || [];
-    if (doneDays.has(k) && s.includes(m)) return;
+  // id: which video, so its length adds to the time total (once per video per day).
+  const lengthOf = (id) => { const v = [...VIDEOS.morning, ...VIDEOS.evening].find(x => x[0] === id); return v ? secs(v[3]) : 0; };
+  function saveToday(m = videoMode, id = video && video[0]) {
+    const k = dayKey(new Date()), s = sessions[k] || [], len = lengthOf(id);
+    const newTime = len > 0 && !(time[k] && time[k][id]);
+    if (newTime) { time[k] = { ...time[k], [id]: len }; store.set("time", time); }
+    if (doneDays.has(k) && s.includes(m)) { if (newTime) { renderWeek(); queueSync(); } return; }
     doneDays.add(k); store.set("doneDays", [...doneDays]);
     if (!s.includes(m)) { sessions[k] = [...s, m]; store.set("sessions", sessions); }
     renderWeek(); queueSync();
   }
 
   // A video was completed: count the day and celebrate, once per video.
-  function markDone(m = videoMode) {
-    saveToday(m);
+  function markDone(m = videoMode, id = video && video[0]) {
+    saveToday(m, id);
     if (celebrated) return;
     celebrated = true;
     renderWeek(true); confetti();
@@ -596,7 +644,7 @@
     $("finish").classList.add("show");
   }
   const closeFinish = () => { $("finish").classList.remove("show"); store.set("pending", null); };
-  $("finish-yes").onclick = () => { const p = store.get("pending", {}) || {}; closeFinish(); celebrated = false; markDone(p.mode); next(); };   // line up a fresh one for next time
+  $("finish-yes").onclick = () => { const p = store.get("pending", {}) || {}; closeFinish(); celebrated = false; markDone(p.mode, p.id); next(); };   // line up a fresh one for next time
   $("finish-no").onclick = closeFinish;
 
   $("appmode").checked = appMode;
@@ -643,14 +691,69 @@
   }
   function openFavs() {
     renderFavs();
-    $("sheet").classList.add("show"); document.body.classList.add("sheet-open");
+    $("sheet").classList.add("show"); lockForSheets();
     $("sheet").querySelector(".sheet").scrollTop = 0; $("sheet-close").focus();
   }
-  function closeFavs() { $("sheet").classList.remove("show"); document.body.classList.remove("sheet-open"); }
+  function closeFavs() { $("sheet").classList.remove("show"); lockForSheets(); }
+  const lockForSheets = () => document.body.classList.toggle("sheet-open", !!document.querySelector(".sheet-wrap.show"));
   $("favs").onclick = openFavs;
   $("sheet-close").onclick = $("scrim").onclick = closeFavs;
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeFavs(); closeAcct(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeFavs(); closeAcct(); closeHist(); } });
 
+
+  // ---- history: a month at a time, each finished day filled in morning / evening / both ----
+  let calMonth = null;   // first of the month being shown
+  const monthStart = (d) => new Date(d.getFullYear(), d.getMonth(), 1);
+  function firstMonth() { const first = [...doneDays].sort()[0]; return first ? monthStart(new Date(first + "T12:00")) : monthStart(new Date()); }
+  function renderCal() {
+    const y = calMonth.getFullYear(), mo = calMonth.getMonth(), todayK = dayKey(new Date());
+    $("cal-month").textContent = calMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    $("cal-prev").disabled = calMonth <= firstMonth();
+    $("cal-next").disabled = calMonth >= monthStart(new Date());
+    const cal = $("cal"); cal.innerHTML = "";
+    "MTWTFSS".split("").forEach(l => { const h = document.createElement("div"); h.className = "day"; h.textContent = l; cal.appendChild(h); });
+    for (let i = 0; i < (calMonth.getDay() + 6) % 7; i++) cal.appendChild(document.createElement("div"));   // weeks start on Monday
+    const inMonth = [];
+    for (let d = 1; d <= new Date(y, mo + 1, 0).getDate(); d++) {
+      const k = dayKey(new Date(y, mo, d)), s = sessions[k] || [], el = document.createElement("div");
+      if (doneDays.has(k)) inMonth.push(k);
+      el.className = "day" + (doneDays.has(k) ? " done" : "") + (s.includes("morning") ? " am" : "") + (s.includes("evening") ? " pm" : "")
+                   + (k === todayK ? " today" : "") + (k > todayK ? " later" : "");
+      el.innerHTML = `<div class="dot">${d}</div>`;
+      el.setAttribute("aria-label", `${d}: ` + (s.length ? s.join(" and ") : doneDays.has(k) ? "done" : "not done"));
+      cal.appendChild(el);
+    }
+    const name = calMonth.toLocaleDateString(undefined, { month: "long" });
+    $("cal-sum").textContent = inMonth.length ? `${totalsText(inMonth)} in ${name}` : `Nothing yet in ${name}`;
+  }
+  const shiftMonth = (n) => {
+    const m = new Date(calMonth.getFullYear(), calMonth.getMonth() + n, 1);
+    if (m < firstMonth() || m > monthStart(new Date())) return;
+    calMonth = m; renderCal();
+  };
+  function openHist() {
+    calMonth = monthStart(new Date());
+    // Time wasn't recorded before version 2.1, so say where it starts.
+    const since = Object.keys(time).sort()[0];
+    $("hist-sub").textContent = totalsText([...doneDays], true) + ". " + (since
+      ? `Time counts routines finished since ${new Date(since + "T12:00").toLocaleDateString(undefined, { month: "long", day: "numeric" })}.`
+      : "Time starts adding up with your next routine.");
+    renderCal();
+    $("hist-sheet").classList.add("show"); lockForSheets();
+  }
+  function closeHist() { $("hist-sheet").classList.remove("show"); lockForSheets(); }
+  $("totals").onclick = openHist;
+  $("hist-close").onclick = $("hist-scrim").onclick = closeHist;
+  $("cal-prev").onclick = () => shiftMonth(-1);
+  $("cal-next").onclick = () => shiftMonth(1);
+  // Swipe sideways on the calendar to change months.
+  let swipeX = null;
+  $("cal").addEventListener("touchstart", (e) => { swipeX = e.touches[0].clientX; }, { passive: true });
+  $("cal").addEventListener("touchend", (e) => {
+    if (swipeX === null) return;
+    const dx = e.changedTouches[0].clientX - swipeX; swipeX = null;
+    if (Math.abs(dx) > 50) shiftMonth(dx < 0 ? 1 : -1);
+  });
 
   // When the app comes back from the background and the time of day has flipped, follow it.
   document.addEventListener("visibilitychange", () => {
@@ -722,15 +825,16 @@
   }
 
   // What this device knows, in the server's shape. Days from before morning/evening was tracked send [].
-  const localData = () => ({ days: Object.fromEntries([...doneDays].map(k => [k, sessions[k] || []])), liked: marks.liked, blocked: marks.blocked });
+  const localData = () => ({ days: Object.fromEntries([...doneDays].map(k => [k, sessions[k] || []])), time, liked: marks.liked, blocked: marks.blocked });
   function applySynced(d) {
     for (const [k, v] of Object.entries(d.days)) { doneDays.add(k); if (v.length) sessions[k] = v; }
+    for (const [k, v] of Object.entries(d.time || {})) time[k] = { ...time[k], ...v };
     for (const key of ["liked", "blocked"]) {
       marks[key] = d[key];
       const set = key === "liked" ? liked : blocked;   // oldest first, so favorites stay newest-first
       set.clear(); Object.entries(d[key]).filter(([, m]) => m[0]).sort((a, b) => a[1][1] - b[1][1]).forEach(([id]) => set.add(id));
     }
-    store.set("doneDays", [...doneDays]); store.set("sessions", sessions); store.set("marks", marks);
+    store.set("doneDays", [...doneDays]); store.set("sessions", sessions); store.set("time", time); store.set("marks", marks);
     store.set("liked", [...liked]); store.set("blocked", [...blocked]);
     renderWeek();
     if (video) { $("up").classList.toggle("on", liked.has(video[0])); if (blocked.has(video[0])) next(); }
@@ -793,9 +897,9 @@
       : "Sign in with Face ID. No password or email. Your finished days, favorites and thumbs-downs follow you to any device, even if you delete the app.";
     $("acct-out").hidden = on; $("acct-in").hidden = !on; $("acct-msg").textContent = "";
     if (!on) prefetch();
-    $("acct-sheet").classList.add("show"); document.body.classList.add("sheet-open");
+    $("acct-sheet").classList.add("show"); lockForSheets();
   }
-  function closeAcct() { $("acct-sheet").classList.remove("show"); if (!$("sheet").classList.contains("show")) document.body.classList.remove("sheet-open"); }
+  function closeAcct() { $("acct-sheet").classList.remove("show"); lockForSheets(); }
   $("acct").onclick = openAcct;
   $("acct-close").onclick = $("acct-scrim").onclick = closeAcct;
   $("acct-new").onclick = () => signIn(createPasskey);
