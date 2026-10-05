@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="2.2">
+<meta name="version" content="2.3">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -215,6 +215,23 @@
   .cal-key { display: flex; justify-content: center; gap: 16px; margin-top: 10px; font-size: 12px; color: var(--muted); }
   .cal-key span { display: inline-flex; align-items: center; gap: 6px; }
   .cal-key i { width: 10px; height: 10px; border-radius: 50%; }
+  /* stats at the top of Your history */
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 2px 0 6px; }
+  .stat { padding: 11px 12px; border-radius: 14px; background: var(--faint); }
+  .stat b { display: block; font-family: var(--serif); font-weight: 400; font-size: 21px; line-height: 1.15; white-space: nowrap; }
+  .stat span { display: block; margin-top: 3px; font-size: 11.5px; color: var(--muted); }
+  .note { margin: 6px 0 14px; font-size: 12px; color: var(--muted); }
+  /* badges: earned ones in the sunset gradient, the rest waiting with their progress */
+  .sheet h3 { display: flex; justify-content: space-between; align-items: baseline; margin: 26px 0 12px; font-family: var(--serif); font-weight: 400; font-size: 20px; }
+  .sheet h3 small { font-family: -apple-system, system-ui, sans-serif; font-size: 12.5px; color: var(--muted); }
+  .badges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px 8px; text-align: center; }
+  .badge i { width: 52px; height: 52px; margin: 0 auto 7px; border-radius: 50%; display: grid; place-items: center; background: var(--faint); color: var(--muted); }
+  .badge i svg { width: 24px; height: 24px; }
+  .badge.got i { background: var(--sunset); color: #fff; box-shadow: 0 6px 16px -6px var(--shadow); }
+  .badge:not(.got) i { opacity: .55; }
+  .badge b { display: block; font-size: 13px; font-weight: 600; line-height: 1.25; }
+  .badge:not(.got) b { color: var(--muted); font-weight: 500; }
+  .badge span { display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.3; color: var(--muted); }
   /* sign-in line above the version, and the sheet it opens */
   .acct { display: block; margin: 14px auto 0; font-size: 12.5px; color: var(--muted); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; }
   .acct[hidden] { display: none; }
@@ -388,9 +405,11 @@
     <div class="scrim" id="hist-scrim"></div>
     <div class="sheet">
       <div class="sheet-head">
-        <div><h2 id="hist-title">Your history</h2><p class="sub" id="hist-sub"></p></div>
+        <div><h2 id="hist-title">Your history</h2></div>
         <button class="mode" id="hist-close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
+      <div class="stats" id="stats"></div>
+      <p class="note" id="hist-note"></p>
       <div class="cal-head">
         <button class="cal-nav" id="cal-prev" aria-label="Previous month"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
         <b id="cal-month"></b>
@@ -399,6 +418,8 @@
       <div class="cal" id="cal"></div>
       <p class="cal-sum" id="cal-sum"></p>
       <div class="cal-key"><span><i style="background:var(--am)"></i>Morning</span><span><i style="background:var(--pm)"></i>Evening</span><span><i style="background:var(--ampm)"></i>Both</span></div>
+      <h3>Badges <small id="badge-count"></small></h3>
+      <div class="badges" id="badges"></div>
     </div>
   </div>
 
@@ -469,13 +490,18 @@
       el.innerHTML = `${"MTWTFSS"[i]}<div class="dot">${CHECK}</div>`;
       $("days").appendChild(el);
     }
-    let streak = 0; const d = new Date(today);
-    if (!doneDays.has(dayKey(d))) d.setDate(d.getDate() - 1);   // today not done yet doesn't break the streak
-    while (doneDays.has(dayKey(d))) { streak++; d.setDate(d.getDate() - 1); }
+    const streak = currentStreak();
     const both = (sessions[dayKey(today)] || []).length === 2;
     $("streak").textContent = streak > 1 ? `${streak}-day streak` : both ? "Morning + evening ✓" : doneDays.has(dayKey(today)) ? "Done today ✓" : "";
 
     $("totals").textContent = totalsText([...doneDays], true);
+  }
+
+  function currentStreak() {
+    let streak = 0; const d = new Date(); d.setHours(0, 0, 0, 0);
+    if (!doneDays.has(dayKey(d))) d.setDate(d.getDate() - 1);   // today not done yet doesn't break the streak
+    while (doneDays.has(dayKey(d))) { streak++; d.setDate(d.getDate() - 1); }
+    return streak;
   }
 
   // "12 sessions · 2 h 15 min · best streak 5 days" for a set of days. Morning and evening count as separate sessions;
@@ -483,15 +509,19 @@
   const sessionsOn = (k) => Math.max(1, (sessions[k] || []).length);
   const secondsOn = (k) => Object.values(time[k] || {}).reduce((a, b) => a + b, 0);
   function hm(sec) { const m = Math.round(sec / 60); return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h` + (m % 60 ? ` ${m % 60} min` : ""); }
+  function bestStreak(days) {
+    let best = 0, run = 0, prev = null;
+    for (const k of [...days].sort()) {
+      const t = new Date(k + "T12:00").getTime();
+      run = prev !== null && Math.round((t - prev) / 864e5) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = t;
+    }
+    return best;
+  }
   function totalsText(days, withStreak) {
     days = days.sort();
     const n = days.reduce((t, k) => t + sessionsOn(k), 0), sec = days.reduce((t, k) => t + secondsOn(k), 0);
     if (!n) return "";
-    let best = 0, run = 0, prev = null;
-    for (const k of days) {
-      const t = new Date(k + "T12:00").getTime();
-      run = prev !== null && Math.round((t - prev) / 864e5) === 1 ? run + 1 : 1; best = Math.max(best, run); prev = t;
-    }
+    const best = bestStreak(days);
     return [`${n} ${n === 1 ? "session" : "sessions"}`, sec >= 60 && hm(sec), withStreak && best > 1 && `best streak ${best} days`].filter(Boolean).join(" · ");
   }
 
@@ -515,6 +545,10 @@
     celebrated = true;
     renderWeek(true); confetti();
     toast(mode === "evening" ? "Nicely done. Sleep well." : "Nice work. Have a good day.");
+    // Any badge this finished routine earned gets its own moment, right after.
+    const fresh = BADGES.filter(b => b.test(stats()) && !earned.has(b.id));
+    fresh.forEach(b => earned.add(b.id));
+    if (fresh.length) setTimeout(() => toast(`Badge unlocked: ${fresh.map(b => b.name).join(", ")}`, openHist, "View"), 2600);
   }
 
   // ---- confetti, in the icon's sunrise / synthwave colors ----
@@ -735,14 +769,60 @@
     if (m < firstMonth() || m > monthStart(new Date())) return;
     calMonth = m; renderCal();
   };
-  function openHist() {
-    calMonth = monthStart(new Date());
+  // ---- stats + badges ----
+  function stats() {
+    const days = [...doneDays], monday = new Date(); monday.setHours(0, 0, 0, 0); monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+    const has = (m) => days.filter(k => (sessions[k] || []).includes(m)).length;
+    return {
+      sessions: days.reduce((t, k) => t + sessionsOn(k), 0), sec: days.reduce((t, k) => t + secondsOn(k), 0),
+      weekSec: days.filter(k => k >= dayKey(monday)).reduce((t, k) => t + secondsOn(k), 0),
+      best: bestStreak(days), current: currentStreak(), mornings: has("morning"), evenings: has("evening"),
+      bookends: days.filter(k => (sessions[k] || []).length === 2).length,
+    };
+  }
+  const ICON = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+  const FLAME = '<path d="M12 3c1 3 4.5 5 4.5 9.5a4.5 4.5 0 0 1-9 0c0-2 1-3.5 2-4.5.3 1.6 1.2 2.5 2.2 2.8C11 8 11.3 5.5 12 3z"/>';
+  const H = 3600;
+  // [id, name, what it takes, icon, test, progress (have, need, as text)]
+  const BADGES = [
+    ["first", "First Stretch", "Finish a routine", '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/>', s => s.sessions, 1],
+    ["ten", "Ten Down", "10 sessions", '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>', s => s.sessions, 10],
+    ["fifty", "Half Century", "50 sessions", '<path d="M8 3l2.5 5.5M16 3l-2.5 5.5"/><circle cx="12" cy="14.5" r="5.5"/><path d="M12 12v5"/>', s => s.sessions, 50],
+    ["hundred", "Centurion", "100 sessions", '<path d="M8 4h8v5a4 4 0 0 1-8 0V4zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M9 20h6M10 17h4"/>', s => s.sessions, 100],
+    ["three", "Three-Peat", "3 days in a row", FLAME, s => s.best, 3, "days"],
+    ["week", "Full Week", "7 days in a row", '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4M9.5 15l2 2 3.5-3.5"/>', s => s.best, 7, "days"],
+    ["fortnight", "Fortnight", "14 days in a row", '<path d="M13 3L5 14h6l-1 7 8-11h-6l1-7z"/>', s => s.best, 14, "days"],
+    ["month", "Unbreakable", "30 days in a row", '<path d="M6 4h12l3 5-9 11L3 9z"/><path d="M3 9h18M9.5 4L12 20M14.5 4L12 20"/>', s => s.best, 30, "days"],
+    ["hour", "First Hour", "1 hour stretched", '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>', s => s.sec, H, "time"],
+    ["ten-hours", "Ten Hours", "10 hours stretched", '<path d="M7 3h10M7 21h10M8 3v2.5a4 4 0 0 0 1.6 3.2L12 10.5l2.4-1.8A4 4 0 0 0 16 5.5V3M8 21v-2.5a4 4 0 0 1 1.6-3.2L12 13.5l2.4 1.8a4 4 0 0 1 1.6 3.2V21"/>', s => s.sec, 10 * H, "time"],
+    ["day", "Day's Worth", "24 hours stretched", '<circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>', s => s.sec, 24 * H, "time"],
+    ["bird", "Early Bird", "10 mornings", '<path d="M2 19h20M6 19a6 6 0 0 1 12 0M12 6v3M5 10.5l1.8 1.4M19 10.5l-1.8 1.4"/>', s => s.mornings, 10],
+    ["owl", "Night Owl", "10 evenings", '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>', s => s.evenings, 10],
+    ["bookends", "Bookends", "Morning + evening, same day", '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/>', s => s.bookends, 1],
+  ].map(([id, name, how, icon, have, need, unit]) => ({ id, name, how, icon: ICON(icon), have, need, unit, test: (s) => have(s) >= need }));
+  const progress = (b, s) => b.unit === "time" ? `${hm(b.have(s))} of ${b.need / H} h` : `${Math.min(b.have(s), b.need)} of ${b.need}` + (b.unit ? ` ${b.unit}` : "");
+  const earned = new Set(BADGES.filter(b => b.test(stats())).map(b => b.id));   // so only new ones get announced
+
+  function renderStats() {
+    const s = stats(), d = (n) => `${n} ${n === 1 ? "day" : "days"}`;
+    $("stats").innerHTML = [
+      [s.sec ? hm(s.sec) : "0 min", "Total time"], [hm(s.weekSec), "This week"], [s.sessions, s.sessions === 1 ? "Session" : "Sessions"],
+      [d(s.current), "Current streak"], [d(s.best), "Best streak"], [`${s.mornings} · ${s.evenings}`, "AM · PM"],
+    ].map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
     // Time wasn't recorded before version 2.1, so say where it starts.
     const since = Object.keys(time).sort()[0];
-    $("hist-sub").textContent = totalsText([...doneDays], true) + ". " + (since
+    $("hist-note").textContent = since
       ? `Time counts routines finished since ${new Date(since + "T12:00").toLocaleDateString(undefined, { month: "long", day: "numeric" })}.`
-      : "Time starts adding up with your next routine.");
-    renderCal();
+      : "Time starts adding up with your next routine.";
+    const got = BADGES.filter(b => b.test(s));
+    $("badge-count").textContent = `${got.length} of ${BADGES.length}`;
+    $("badges").innerHTML = BADGES.map(b => { const ok = b.test(s);
+      return `<div class="badge${ok ? " got" : ""}" aria-label="${b.name}: ${ok ? "earned" : "not yet, " + b.how}"><i>${b.icon}</i><b>${b.name}</b><span>${ok || b.need === 1 ? b.how : progress(b, s)}</span></div>`; }).join("");
+  }
+
+  function openHist() {
+    calMonth = monthStart(new Date());
+    renderStats(); renderCal();
     $("hist-sheet").classList.add("show"); lockForSheets();
   }
   function closeHist() { $("hist-sheet").classList.remove("show"); lockForSheets(); }
@@ -882,6 +962,7 @@
       const { token } = await how();
       syncToken = token; store.set("syncToken", token);
       await sync();   // this device's history goes up, everything else comes down
+      BADGES.filter(b => b.test(stats())).forEach(b => earned.add(b.id));
       closeAcct(); paintAcct(); toast("Signed in. Your history is saved.");
     } catch (e) {
       // Cancelling the Face ID prompt isn't an error worth a message.
