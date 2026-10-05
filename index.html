@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="2.1">
+<meta name="version" content="2.2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -289,7 +289,11 @@
   .pull.spin svg { animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
   .confetti { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: 20; pointer-events: none; }
-  @media (min-width: 600px) { body { max-width: 520px; margin: 0 auto; } }
+  @media (min-width: 600px) {
+    body { max-width: 520px; margin: 0 auto; }
+    /* sheets cover the whole window, so keep their panel in the same column as the app */
+    .sheet { max-width: 520px; margin: 0 auto; }
+  }
 </style>
 </head>
 <body>
