@@ -1,0 +1,18 @@
+# michaelrad.me/mobility is copied from this repo's main branch when the michaelrad.me
+# site rebuilds on Railway, so ask Railway to rebuild it whenever main changes.
+# Needs a Railway project token for the michaelrad-me project saved as the RAILWAY_TOKEN secret.
+name: Rebuild michaelrad.me
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    container: ghcr.io/railwayapp/cli:latest
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - run: railway redeploy --service michaelrad-me --yes
