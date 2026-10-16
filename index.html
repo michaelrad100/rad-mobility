@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="2.3">
+<meta name="version" content="2.4">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -79,6 +79,7 @@
   }
   .mode svg { width: 19px; height: 19px; }
 
+  [hidden] { display: none !important; }
   /* video card */
   .player {
     position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 20px; overflow: hidden; background: #000;
@@ -433,10 +434,13 @@
   const blocked = new Set(store.get("blocked", []));   // thumbs down + unembeddable
   const liked = new Set(store.get("liked", []));       // thumbs up
   const lastShown = store.get("lastShown", {});         // id -> timestamp
-  const current = store.get("current", {});            // mode -> {id, at}
   const doneDays = new Set(store.get("doneDays", []));  // "YYYY-MM-DD" days you finished a routine
   const sessions = store.get("sessions", {});           // "YYYY-MM-DD" -> ["morning", "evening"]: which ones
   const time = store.get("time", {});                   // "YYYY-MM-DD" -> {videoId: seconds}: each routine finished, by its length
+  for (const [day, videos] of Object.entries(time)) {
+    for (const id of Object.keys(videos)) lastShown[id] = Math.max(lastShown[id] || 0, Date.parse(day + "T12:00:00Z"));
+  }
+  store.set("lastShown", lastShown);
   let appMode = store.get("appMode", false);             // play in the YouTube app (ad-free with Premium)
   // Each thumbs up/down also notes when it happened, so signed-in devices can merge them (newest wins).
   // Likes from before this existed get tiny times, in order, so any real change beats them.
@@ -583,27 +587,62 @@
     })(start);
   }
 
-  // Least-recently-shown first, random among ties, so you cycle the whole list before repeats.
-  // Thumbs-up videos jump the queue ~40% of the time once they haven't been shown for 3 days.
+  // Unseen first. Other repeats need 60 distinct intervening videos in this pool; favorites need three days.
   function pick(excludeId) {
     const pool = VIDEOS[mode].filter(v => !blocked.has(v[0]) && v[0] !== excludeId);
-    if (!pool.length) return null;
-    const fav = pool.filter(v => liked.has(v[0]) && Date.now() - (lastShown[v[0]] || 0) > 3 * 864e5);
-    if (fav.length && Math.random() < 0.4) return fav[Math.floor(Math.random() * fav.length)];
-    pool.sort(() => Math.random() - 0.5);
-    pool.sort((a, b) => (lastShown[a[0]] || 0) - (lastShown[b[0]] || 0));
-    return pool[0];
+    const fresh = pool.filter(v => !lastShown[v[0]]);
+    const fav = pool.filter(v => liked.has(v[0]) && lastShown[v[0]] && Date.now() - lastShown[v[0]] >= 3 * 864e5);
+    const repeats = pool.filter(v => lastShown[v[0]] && !liked.has(v[0]) &&
+      VIDEOS[mode].filter(other => other[0] !== v[0] && (lastShown[other[0]] || 0) > lastShown[v[0]]).length >= 60);
+    const ordinary = fresh.length ? fresh : repeats;
+    const choices = fav.length && (!ordinary.length || Math.random() < 0.4) ? fav : ordinary;
+    return choices.length ? choices[Math.floor(Math.random() * choices.length)] : null;
+  }
+
+  let selection = 0;
+  async function selectVideo(excludeId) {
+    const request = ++selection, requestedMode = mode;
+    // Cover the old player immediately, including YouTube's end screen, while a new choice loads.
+    video = null; reached = celebrated = false;
+    clearInterval(progressTimer);
+    if (ready) player.stopVideo();
+    setBig(false); $("card").hidden = true;
+    $("up").disabled = $("down").disabled = true;
+    $("channel").textContent = ""; $("title").textContent = "Loading…";
+    $("next").disabled = true;
+    try {
+      let v;
+      if (syncToken) {
+        // The server merges history and reserves this choice atomically, before the card is shown.
+        const result = await api("/recommend", { mode, ids: VIDEOS[mode].map(v => v[0]), excludeId, data: localData() });
+        applySynced(result.data);
+        v = VIDEOS[requestedMode].find(v => v[0] === result.id) || null;
+      } else v = pick(excludeId);
+      if (request === selection && requestedMode === mode) show(v, true);
+    } catch {
+      if (request === selection) {
+        if (!video) { $("card").hidden = true; $("title").textContent = "Connect to load a fresh routine."; }
+        toast("Couldn't load a fresh routine. Please try again.");
+      }
+    } finally { if (request === selection) $("next").disabled = false; }
   }
 
   function show(v, animate) {
     video = v; videoMode = mode; reached = celebrated = false;
+    clearInterval(progressTimer);
+    $("card").hidden = !v;
+    $("up").disabled = $("down").disabled = !v;
     if (!v) {
-      $("channel").textContent = ""; $("title").textContent = "You've thumbed-down everything here.";
-      toast("Bring them all back?", () => { VIDEOS[mode].forEach(x => blocked.has(x[0]) && setBlocked(x[0], false)); show(pick(), true); }, "Restore");
+      if (ready) player.stopVideo();
+      setBig(false);
+      $("channel").textContent = "";
+      const allBlocked = VIDEOS[mode].every(x => blocked.has(x[0]));
+      $("title").textContent = allBlocked ? "You've thumbed-down everything here." : "You're all caught up on fresh routines.";
+      if (allBlocked) toast("Bring them all back?", () => { VIDEOS[mode].forEach(x => blocked.has(x[0]) && setBlocked(x[0], false)); next(); }, "Restore");
+      else toast("Try the other routine, or choose one of your favorites.");
       return;
     }
-    lastShown[v[0]] = Date.now(); store.set("lastShown", lastShown);
-    current[mode] = { id: v[0], at: Date.now() }; store.set("current", current);
+    lastShown[v[0]] = Math.max(Date.now(), ...Object.values(lastShown).map(at => at + 1)); store.set("lastShown", lastShown); queueSync();
     $("channel").textContent = v[2];
     $("up").classList.toggle("on", liked.has(v[0]));
     $("title").textContent = v[1];
@@ -633,17 +672,7 @@
   function hush() { if (!ready) return; player.mute(); hushed = true; $("card").classList.add("hushed"); }
   function unhush() { if (!hushed) return; hushed = false; $("card").classList.remove("hushed"); if (ready) player.unMute(); }
 
-  function initial() {
-    // Reopening within 2 hours keeps the same video instead of jumping to a new one.
-    const c = current[mode];
-    if (c && Date.now() - c.at < 2 * 3600e3 && !blocked.has(c.id)) {
-      const v = VIDEOS[mode].find(x => x[0] === c.id);
-      if (v) return v;
-    }
-    return pick();
-  }
-
-  function next() { show(pick(video && video[0]), true); }
+  function next() { return selectVideo(video && video[0]); }
 
   let toastTimer;
   function toast(msg, undo, label = "Undo") {
@@ -692,7 +721,7 @@
     document.body.classList.toggle("app-mode", appMode);
     toast(appMode ? "Videos will open in the YouTube app" : "Videos will play here");
   };
-  $("mode").onclick = () => { mode = mode === "evening" ? "morning" : "evening"; applyMode(); show(initial(), true); };
+  $("mode").onclick = () => { mode = mode === "evening" ? "morning" : "evening"; applyMode(); selectVideo(); };
 
   // ---- favorites sheet: every thumbs-up video, newest first ----
   const UP_ICON = $("up").innerHTML;
@@ -713,7 +742,7 @@
       row.querySelector(".t").textContent = v[1];
       row.querySelector(".s").textContent = `${v[2]} · ${v[3]} · ${m === "evening" ? "Evening" : "Morning"}`;
       row.querySelector(".go").onclick = () => {
-        closeFavs();
+        closeFavs(); ++selection; $("next").disabled = false;
         if (m !== mode) { mode = m; applyMode(); }
         show(v, true); scrollTo({ top: 0, behavior: "smooth" });
       };
@@ -845,7 +874,7 @@
     renderWeek(); applyMode();   // refresh date + morning/afternoon greeting
     checkFinished(); checkUpdate(); sync();
     if (autoMode() === lastAuto) return;
-    mode = lastAuto = autoMode(); applyMode(); show(initial(), true);
+    mode = lastAuto = autoMode(); applyMode(); selectVideo();
   });
 
   // ---- pull down from the top to reload the whole app ----
@@ -909,8 +938,13 @@
   }
 
   // What this device knows, in the server's shape. Days from before morning/evening was tracked send [].
-  const localData = () => ({ days: Object.fromEntries([...doneDays].map(k => [k, sessions[k] || []])), time, liked: marks.liked, blocked: marks.blocked });
+  const localData = () => ({ shown: { ...lastShown }, days: Object.fromEntries([...doneDays].map(k => [k, sessions[k] || []])), time, liked: marks.liked, blocked: marks.blocked });
   function applySynced(d) {
+    for (const [id, at] of Object.entries(d.shown || {})) lastShown[id] = Math.max(lastShown[id] || 0, at);
+    for (const [day, videos] of Object.entries(d.time || {})) {
+      for (const id of Object.keys(videos)) lastShown[id] = Math.max(lastShown[id] || 0, Date.parse(day + "T12:00:00Z"));
+    }
+    store.set("lastShown", lastShown);
     for (const [k, v] of Object.entries(d.days)) { doneDays.add(k); if (v.length) sessions[k] = v; }
     for (const [k, v] of Object.entries(d.time || {})) time[k] = { ...time[k], ...v };
     for (const key of ["liked", "blocked"]) {
@@ -921,7 +955,7 @@
     store.set("doneDays", [...doneDays]); store.set("sessions", sessions); store.set("time", time); store.set("marks", marks);
     store.set("liked", [...liked]); store.set("blocked", [...blocked]);
     renderWeek();
-    if (video) { $("up").classList.toggle("on", liked.has(video[0])); if (blocked.has(video[0])) next(); }
+    if (video) { $("up").classList.toggle("on", liked.has(video[0])); if (blocked.has(video[0]) && !$("next").disabled) next(); }
   }
   // keepalive lets a last sync finish as the app goes to the background.
   async function sync(keepalive) {
@@ -961,6 +995,7 @@
     try {
       const { token } = await how();
       syncToken = token; store.set("syncToken", token);
+      await next();   // reserve using the signed-in account before showing another routine
       await sync();   // this device's history goes up, everything else comes down
       BADGES.filter(b => b.test(stats())).forEach(b => earned.add(b.id));
       closeAcct(); paintAcct(); toast("Signed in. Your history is saved.");
@@ -978,8 +1013,8 @@
   function openAcct() {
     const on = !!syncToken;
     $("acct-title").textContent = on ? "You're signed in" : "Keep your history";
-    $("acct-sub").textContent = on ? "Your finished days, favorites and thumbs-downs are saved, and follow you to any device where you sign in with your passkey."
-      : "Sign in with Face ID. No password or email. Your finished days, favorites and thumbs-downs follow you to any device, even if you delete the app.";
+    $("acct-sub").textContent = on ? "Your shown videos, finished days, favorites and thumbs-downs are saved, and follow you to any device where you sign in with your passkey."
+      : "Sign in with Face ID. No password or email. Your shown videos, finished days, favorites and thumbs-downs follow you to any device, even if you delete the app.";
     $("acct-out").hidden = on; $("acct-in").hidden = !on; $("acct-msg").textContent = "";
     if (!on) prefetch();
     $("acct-sheet").classList.add("show"); lockForSheets();
@@ -996,8 +1031,8 @@
 
   applyMode();
   renderWeek();
-  paintAcct(); sync();
-  show(initial());
+  paintAcct();
+  selectVideo();
   checkFinished();   // the app may have been fully closed while you were in YouTube
 
   // ---- YouTube player ----
@@ -1020,7 +1055,7 @@
           // so it doesn't pop mid-routine.
           if (e.data === S.ENDED || (e.data === S.PAUSED && reached)) markDone();
           // At the end, step back out of big mode and reset the card, so YouTube's end screen of other videos never shows.
-          if (e.data === S.ENDED) show(video);
+          if (e.data === S.ENDED) next();
           clearInterval(progressTimer);
           if (e.data === S.PLAYING) progressTimer = setInterval(() => {
             const dur = player.getDuration(), now = player.getCurrentTime();
