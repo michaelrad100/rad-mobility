@@ -22,4 +22,6 @@ New entries and their source metadata are recorded in `docs/video-additions-2026
 
 Run `node --test tests/*.test.cjs`. Test the backend with `npm test` in the sync repository.
 
+Version 2.5 fixes a player initialization race: if a signed-in recommendation arrives between YouTube player construction and its ready event, the ready handler now cues the current card. Player regression tests exercise both startup event orders, changes before readiness, guest startup, and an exhausted queue.
+
 Deploy the updated sync service **before** publishing app version 2.4: the app requires its `/recommend` endpoint. The backend remains compatible with older apps' `/sync` requests. Merging app changes to main publishes GitHub Pages and triggers a michaelrad.me rebuild, as described in `CLAUDE.md`.

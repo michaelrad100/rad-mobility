@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="2.4">
+<meta name="version" content="2.5">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1043,7 +1043,13 @@
       // Big mode stands in for full screen.
       playerVars: { playsinline: 1, rel: 0, modestbranding: 1, fs: 0, iv_load_policy: 3, disablekb: 1 },
       events: {
-        onReady: () => { ready = true; hush(); },
+        onReady: () => {
+          ready = true;
+          // A signed-in recommendation (or a new card) can arrive after this
+          // player is constructed but before it is ready. Cue the current card.
+          if (video) player.cueVideoById(video[0]);
+          hush();
+        },
         onStateChange: (e) => {
           const S = YT.PlayerState, c = $("card");
           if (e.data === S.PLAYING || e.data === S.BUFFERING) {
