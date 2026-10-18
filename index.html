@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="2.5">
+<meta name="version" content="2.6">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -87,8 +87,8 @@
   }
   body.evening .player { box-shadow: 0 20px 54px -16px var(--shadow), 0 0 0 1px var(--line); }
   .player iframe, #yt { position: absolute; inset: 0; width: 100%; height: 100%; }
-  /* The poster sits on top but lets taps fall through to YouTube's player, so iOS plays it natively. */
-  .poster { position: absolute; inset: 0; pointer-events: none; transition: opacity .35s; }
+  /* Own the tap target instead of relying on YouTube's controls lining up underneath. */
+  .poster { position: absolute; inset: 0; width: 100%; height: 100%; text-align: left; transition: opacity .35s; }
   .poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .poster::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,.45)); }
   .poster .play {
@@ -97,11 +97,15 @@
     box-shadow: 0 8px 24px rgba(0,0,0,.25);
   }
   .poster .play svg { width: 26px; height: 26px; margin-left: 4px; fill: #2b2620; }
+  .poster:disabled { cursor: wait; }
+  .poster:disabled .play { opacity: .6; }
+  .player-status { position: absolute; z-index: 1; top: calc(50% + 44px); left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 4px #000; }
+  .player-status:empty { display: none; }
   .poster .len {
     position: absolute; right: 12px; bottom: 12px; z-index: 1; font-size: 12px; font-weight: 600; color: #fff;
     background: rgba(0,0,0,.45); padding: 4px 9px; border-radius: 999px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
   }
-  .poster.hidden { opacity: 0; }
+  .poster.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
   .player.swap { animation: swap .45s ease; }
   @keyframes swap { 0% { opacity: .2; transform: scale(.97); } 100% { opacity: 1; transform: none; } }
   /* Invisible shields over YouTube's title bar and bottom row (share, "More videos", logo), so a stray tap can't wander off to YouTube. */
@@ -329,11 +333,12 @@
 
   <div class="player" id="card">
     <div id="yt"></div>
-    <div class="poster" id="poster">
+    <button class="poster" id="poster" type="button" aria-label="Play video" disabled>
       <img id="thumb" alt="">
-      <div class="play"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg></div>
-      <div class="len" id="len"></div>
-    </div>
+      <span class="play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg></span>
+      <span class="player-status" id="player-status" role="status">Loading player…</span>
+      <span class="len" id="len"></span>
+    </button>
     <div class="shield top"></div>
     <div class="shield bottom"></div>
     <button class="size-btn" id="size-btn"></button>
@@ -629,6 +634,7 @@
 
   function show(v, animate) {
     video = v; videoMode = mode; reached = celebrated = false;
+    paintPlay();
     clearInterval(progressTimer);
     $("card").hidden = !v;
     $("up").disabled = $("down").disabled = !v;
@@ -682,6 +688,16 @@
   }
 
   $("next").onclick = next;
+  function paintPlay() {
+    $("poster").disabled = !ready || !video;
+    $("player-status").textContent = ready ? "" : "Loading player…";
+  }
+  $("poster").onclick = () => {
+    if (!ready || !video) return;
+    // Keep this synchronous with the tap so iOS retains user activation.
+    player.playVideo();
+    $("player-status").textContent = "Starting…";
+  };
   $("size-btn").onclick = () => setBig(!$("card").classList.contains("big"));
   $("resume").onclick = () => { $("paused").classList.remove("show"); if (ready) player.playVideo(); };
   $("up").onclick = () => {
@@ -1049,6 +1065,13 @@
           // player is constructed but before it is ready. Cue the current card.
           if (video) player.cueVideoById(video[0]);
           hush();
+          paintPlay();
+        },
+        onAutoplayBlocked: () => {
+          // Some iPhone configurations require a tap inside the iframe itself.
+          $("poster").classList.add("hidden"); $("paused").classList.remove("show");
+          $("card").classList.remove("playing", "endzone"); setBig(false);
+          toast("Tap YouTube's play button to start.");
         },
         onStateChange: (e) => {
           const S = YT.PlayerState, c = $("card");

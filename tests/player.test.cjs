@@ -31,7 +31,7 @@ function app({ signedIn = true } = {}) {
   };
   const recommendations = [];
   const data = new Map(signedIn ? [['syncToken', JSON.stringify('test-only')]] : []);
-  let options, loadedId, player;
+  let options, loadedId, player, playCalls = 0;
   const context = vm.createContext({
     document: {
       body: element(), getElementById: get, createElement: element,
@@ -46,6 +46,7 @@ function app({ signedIn = true } = {}) {
         options = config; loadedId = config.videoId;
         player = {
           cueVideoById(id) { loadedId = id; },
+          playVideo() { playCalls++; },
           stopVideo() { loadedId = undefined; }, mute() {}, unMute() {},
         };
         return player;
@@ -59,7 +60,9 @@ function app({ signedIn = true } = {}) {
     get, context,
     construct: () => context.onYouTubeIframeAPIReady(),
     ready: () => options.events.onReady({ target: player }),
+    blockPlayback: () => options.events.onAutoplayBlocked({ target: player }),
     loaded: () => loadedId,
+    playCalls: () => playCalls,
     selected: () => get('applink').href?.split('v=')[1],
     async recommend(index = 0, empty = false) {
       const id = vm.runInContext(`VIDEOS[mode][${index}][0]`, context);
@@ -119,4 +122,43 @@ test('guest startup retains the selected video when the player becomes ready', (
   a.construct(); a.ready();
   assert.equal(a.loaded(), a.selected());
   assert.ok(a.loaded());
+});
+
+test('the visible poster is an actual button whose tap starts the ready player synchronously', async () => {
+  assert.match(html, /<button[^>]*id="poster"[^>]*aria-label="Play video"/);
+  const a = app();
+  a.construct();
+  await a.recommend();
+  assert.equal(a.get('poster').disabled, true);
+  assert.equal(a.get('player-status').textContent, 'Loading player…');
+  a.get('poster').onclick();
+  assert.equal(a.playCalls(), 0);
+  a.ready();
+  assert.equal(a.get('poster').disabled, false);
+  a.get('poster').onclick();
+  assert.equal(a.playCalls(), 1);
+  assert.equal(a.get('player-status').textContent, 'Starting…');
+});
+
+test('the play button remains disabled without a selected routine', async () => {
+  const a = app();
+  a.construct(); a.ready();
+  await a.recommend(0, true);
+  assert.equal(a.get('poster').disabled, true);
+  a.get('poster').onclick();
+  assert.equal(a.playCalls(), 0);
+});
+
+test('blocked scripted playback reveals the native player and removes tap shields', () => {
+  const a = app({ signedIn: false });
+  a.construct(); a.ready();
+  a.get('card').classList.add('playing', 'endzone', 'big');
+  a.get('paused').classList.add('show');
+  a.blockPlayback();
+  assert.equal(a.get('poster').classList.contains('hidden'), true);
+  assert.equal(a.get('paused').classList.contains('show'), false);
+  for (const name of ['playing', 'endzone', 'big']) {
+    assert.equal(a.get('card').classList.contains(name), false);
+  }
+  assert.equal(a.get('toast').textContent, "Tap YouTube's play button to start.");
 });
