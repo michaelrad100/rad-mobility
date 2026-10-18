@@ -26,4 +26,6 @@ Version 2.5 fixes a player initialization race: if a signed-in recommendation ar
 
 Version 2.6 makes the visible poster a real Play button instead of passing taps through to YouTube's underlying controls. It calls playback directly from the user gesture, shows loading/starting feedback, and reveals the native player if the browser blocks scripted playback. Its hidden state stops intercepting player controls after playback starts.
 
+Version 2.7 adds a draggable video-position slider, elapsed/total time, a play/pause control, and single-tap areas on the left/right to rewind/advance ten seconds. These controls remain accessible above the tap shields while paused or near the end, in both card and full-screen layouts. Seeking preserves paused playback; rapid taps accumulate and clamp to the video's bounds. Controls become available when the routine starts, after the sound gate releases.
+
 Deploy the updated sync service **before** publishing app version 2.4: the app requires its `/recommend` endpoint. The backend remains compatible with older apps' `/sync` requests. Merging app changes to main publishes GitHub Pages and triggers a michaelrad.me rebuild, as described in `CLAUDE.md`.
