@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="2.7">
+<meta name="version" content="2.8">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -148,6 +148,7 @@
   .transport { position: absolute; inset: 0; z-index: 4; pointer-events: none; display: none; color: #fff; }
   .player.playing:not(.hushed) .transport { display: block; }
   body.app-mode .transport { display: none !important; }
+  .finish-routine { position: absolute; top: max(12px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); min-height: 44px; padding: 10px 16px; border-radius: 999px; background: rgba(255,255,255,.94); color: #2b2620; font-size: 14px; font-weight: 600; white-space: nowrap; box-shadow: 0 4px 16px #0004; pointer-events: auto; }
   .skip { position: absolute; top: 22%; bottom: 66px; width: 26%; min-height: 44px; pointer-events: auto; touch-action: manipulation; }
   .skip.back { left: 0; }
   .skip.ahead { right: 0; }
@@ -364,6 +365,7 @@
       <button id="resume"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg>Keep going</button>
     </div>
     <div class="transport" id="transport">
+      <button class="finish-routine" id="finish-routine" hidden>Finish routine ✓</button>
       <button class="skip back" id="seek-back" aria-label="Go back 10 seconds"><span aria-hidden="true">↶ 10</span></button>
       <button class="skip ahead" id="seek-ahead" aria-label="Jump ahead 10 seconds"><span aria-hidden="true">10 ↷</span></button>
       <div class="seekbar">
@@ -635,6 +637,7 @@
     const request = ++selection, requestedMode = mode;
     // Cover the old player immediately, including YouTube's end screen, while a new choice loads.
     video = null; reached = celebrated = false;
+    $("finish-routine").hidden = true;
     clearInterval(progressTimer);
     if (ready) player.stopVideo();
     setBig(false); $("card").hidden = true;
@@ -660,6 +663,7 @@
 
   function show(v, animate) {
     video = v; videoMode = mode; reached = celebrated = false;
+    $("finish-routine").hidden = true;
     paintPlay();
     scrubbing = false; pendingSeek = null;
     $("timeline").value = $("timeline").max = 0; $("timeline").disabled = true;
@@ -741,6 +745,7 @@
     if (!ready || !video) return;
     const duration = player.getDuration(), at = seekPosition();
     const disabled = !duration || hushed;
+    $("finish-routine").hidden = disabled || duration - at > 30 || duration - at < 0;
     $("seek-back").disabled = $("seek-ahead").disabled = $("timeline").disabled = disabled;
     $("timeline").max = Math.floor(duration || 0);
     if (!scrubbing) $("timeline").value = Math.floor(at);
@@ -771,6 +776,15 @@
     if (!ready || !video) return;
     if (player.getPlayerState() === YT.PlayerState.PLAYING) player.pauseVideo();
     else player.playVideo();
+  };
+  $("finish-routine").onclick = () => {
+    if (!ready || !video || hushed || $("finish-routine").hidden) return;
+    const remaining = player.getDuration() - seekPosition();
+    if (!player.getDuration() || remaining < 0 || remaining > 30) return;
+    $("finish-routine").hidden = true;
+    // Use the normal completion path so history, time, sync and badges all count.
+    markDone();
+    return next();
   };
   $("up").onclick = () => {
     if (!video) return;

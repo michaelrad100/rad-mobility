@@ -30,6 +30,7 @@ function app({ signedIn = true } = {}) {
     return elements.get(id);
   };
   const recommendations = [];
+  const requests = [];
   const data = new Map(signedIn ? [['syncToken', JSON.stringify('test-only')]] : []);
   let options, loadedId, player, playCalls = 0, pauseCalls = 0;
   let position = 20, duration = 600, state = -1, interval;
@@ -40,10 +41,14 @@ function app({ signedIn = true } = {}) {
       querySelector: get, querySelectorAll: () => [], addEventListener() {},
     },
     location: { hostname: 'localhost', pathname: '/' }, navigator: {},
+    matchMedia: () => ({ matches: true }),
     localStorage: { getItem: k => data.get(k) ?? null, setItem: (k, v) => data.set(k, v) },
     addEventListener() {}, setTimeout() {}, clearTimeout() {},
     setInterval(fn) { interval = fn; return 1; }, clearInterval() { interval = null; },
-    fetch: () => new Promise(resolve => recommendations.push(resolve)),
+    fetch: (url, options) => {
+      requests.push({ url, body: JSON.parse(options.body) });
+      return new Promise(resolve => recommendations.push(resolve));
+    },
     YT: {
       PlayerState: { PLAYING: 1, PAUSED: 2, BUFFERING: 3, ENDED: 0, CUED: 5 },
       Player: function (_id, config) {
@@ -72,6 +77,8 @@ function app({ signedIn = true } = {}) {
     playCalls: () => playCalls,
     pauseCalls: () => pauseCalls,
     seeks,
+    requests,
+    stored: key => JSON.parse(data.get(key) || 'null'),
     position: at => { position = at; },
     duration: seconds => { duration = seconds; },
     state(value) { state = value; options.events.onStateChange({ data: value }); },
@@ -237,4 +244,58 @@ test('seek controls do not act before readiness or during the muted pre-roll', (
   a.construct(); a.ready();
   a.get('seek-ahead').onclick();
   assert.deepEqual(a.seeks, []);
+});
+
+test('Finish routine appears at thirty seconds remaining and hides when rewinding', () => {
+  const a = playingApp();
+  a.get('timeline').value = 569; a.get('timeline').oninput();
+  assert.equal(a.get('finish-routine').hidden, true);
+  a.get('finish-routine').onclick();
+  assert.equal(a.stored('time'), null);
+  a.get('timeline').value = 570; a.get('timeline').oninput();
+  assert.equal(a.get('finish-routine').hidden, false);
+  a.get('seek-back').onclick();
+  assert.equal(a.get('finish-routine').hidden, true);
+});
+
+test('finishing a paused routine records credit and advances without counting it twice', () => {
+  const a = playingApp(), id = a.selected();
+  a.get('timeline').value = 575; a.get('timeline').oninput();
+  a.state(2);
+  a.get('finish-routine').onclick();
+  assert.notEqual(a.selected(), id);
+  const days = a.stored('doneDays');
+  assert.equal(days.length, 1);
+  assert.ok(a.stored('time')[days[0]][id] > 0);
+  assert.equal(a.stored('sessions')[days[0]].length, 1);
+  assert.equal(a.get('finish-routine').hidden, true);
+  a.get('finish-routine').onclick();
+  assert.deepEqual(Object.keys(a.stored('time')[days[0]]), [id]);
+  assert.equal(a.get('card').classList.contains('big'), false);
+});
+
+test('signed-in completion credit goes into the next recommendation request', async () => {
+  const a = app();
+  a.construct(); a.ready();
+  const id = await a.recommend();
+  a.state(1); a.tick();
+  a.get('timeline').value = 580; a.get('timeline').oninput();
+  const pending = a.get('finish-routine').onclick();
+  assert.equal(a.get('finish-routine').hidden, true);
+  const request = a.requests.at(-1);
+  assert.match(request.url, /\/recommend$/);
+  const [[day, durations]] = Object.entries(request.body.data.time);
+  assert.ok(durations[id] > 0);
+  assert.ok(request.body.data.days[day].length);
+  a.get('finish-routine').onclick(); // no second completion while the next card loads
+  await a.recommend(1); await pending;
+  assert.deepEqual(Object.keys(a.stored('time')[day]), [id]);
+});
+
+test('Finish routine is unavailable while loading or during pre-roll', () => {
+  const a = app({ signedIn: false });
+  a.construct(); a.ready(); a.position(580); a.state(3);
+  assert.equal(a.get('finish-routine').hidden, true);
+  a.get('finish-routine').onclick();
+  assert.equal(a.stored('time'), null);
 });

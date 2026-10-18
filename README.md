@@ -28,4 +28,6 @@ Version 2.6 makes the visible poster a real Play button instead of passing taps 
 
 Version 2.7 adds a draggable video-position slider, elapsed/total time, a play/pause control, and single-tap areas on the left/right to rewind/advance ten seconds. These controls remain accessible above the tap shields while paused or near the end, in both card and full-screen layouts. Seeking preserves paused playback; rapid taps accumulate and clamp to the video's bounds. Controls become available when the routine starts, after the sound gate releases.
 
+Version 2.8 adds **Finish routine ✓** during the last 30 seconds of an embedded video. It works while playing or paused, credits the routine through the same history/time/sync/badge path as normal completion, stops playback, and selects the next routine. Rewinding outside the last 30 seconds hides the button. YouTube-app mode continues to use its existing Finished? check-in on return.
+
 Deploy the updated sync service **before** publishing app version 2.4: the app requires its `/recommend` endpoint. The backend remains compatible with older apps' `/sync` requests. Merging app changes to main publishes GitHub Pages and triggers a michaelrad.me rebuild, as described in `CLAUDE.md`.
