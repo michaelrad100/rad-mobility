@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="2.6">
+<meta name="version" content="2.7">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -144,6 +144,23 @@
     background: rgba(255,255,255,.9); color: #2b2620; font-weight: 600; font-size: 16px; box-shadow: 0 8px 24px rgba(0,0,0,.25);
   }
   .paused button svg { width: 16px; height: 16px; fill: currentColor; }
+  /* Our controls sit above the tap shields, including while paused and near the end. */
+  .transport { position: absolute; inset: 0; z-index: 4; pointer-events: none; display: none; color: #fff; }
+  .player.playing:not(.hushed) .transport { display: block; }
+  body.app-mode .transport { display: none !important; }
+  .skip { position: absolute; top: 22%; bottom: 66px; width: 26%; min-height: 44px; pointer-events: auto; touch-action: manipulation; }
+  .skip.back { left: 0; }
+  .skip.ahead { right: 0; }
+  .skip span { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(0,0,0,.4); font-size: 14px; font-weight: 600; opacity: .55; transition: opacity .15s, transform .15s; }
+  .skip:active span, .skip:focus-visible span { opacity: 1; transform: scale(1.12); }
+  .seekbar { position: absolute; bottom: 0; left: 0; right: 0; display: flex; align-items: center; gap: 8px; padding: 16px 12px max(8px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgba(0,0,0,.85)); pointer-events: auto; }
+  .play-toggle { flex: 0 0 44px; height: 44px; display: grid; place-items: center; font-size: 20px; }
+  .timeline { appearance: none; -webkit-appearance: none; flex: 1; min-width: 0; height: 44px; margin: 0; background: transparent; cursor: pointer; touch-action: none; }
+  .timeline::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: rgba(255,255,255,.55); }
+  .timeline::-moz-range-track { height: 4px; border-radius: 4px; background: rgba(255,255,255,.55); }
+  .timeline::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; margin-top: -7px; border-radius: 50%; background: #fff; box-shadow: 0 1px 6px #0006; }
+  .timeline::-moz-range-thumb { width: 18px; height: 18px; border: 0; border-radius: 50%; background: #fff; }
+  .seek-time { flex-shrink: 0; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
   /* meta */
   .meta { padding: 18px 2px 0; }
@@ -345,6 +362,15 @@
     <div class="hush">Sound comes on when your stretch starts</div>
     <div class="paused" id="paused">
       <button id="resume"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg>Keep going</button>
+    </div>
+    <div class="transport" id="transport">
+      <button class="skip back" id="seek-back" aria-label="Go back 10 seconds"><span aria-hidden="true">↶ 10</span></button>
+      <button class="skip ahead" id="seek-ahead" aria-label="Jump ahead 10 seconds"><span aria-hidden="true">10 ↷</span></button>
+      <div class="seekbar">
+        <button class="play-toggle" id="play-toggle" aria-label="Pause video">Ⅱ</button>
+        <input class="timeline" id="timeline" type="range" min="0" max="0" step="1" value="0" aria-label="Video position" disabled>
+        <span class="seek-time" id="seek-time">0:00 / 0:00</span>
+      </div>
     </div>
     <a class="applink" id="applink" href="#" aria-label="Play in the YouTube app"></a>
   </div>
@@ -635,6 +661,9 @@
   function show(v, animate) {
     video = v; videoMode = mode; reached = celebrated = false;
     paintPlay();
+    scrubbing = false; pendingSeek = null;
+    $("timeline").value = $("timeline").max = 0; $("timeline").disabled = true;
+    $("seek-time").textContent = "0:00 / 0:00";
     clearInterval(progressTimer);
     $("card").hidden = !v;
     $("up").disabled = $("down").disabled = !v;
@@ -700,6 +729,49 @@
   };
   $("size-btn").onclick = () => setBig(!$("card").classList.contains("big"));
   $("resume").onclick = () => { $("paused").classList.remove("show"); if (ready) player.playVideo(); };
+  let scrubbing = false, pendingSeek = null, pendingSeekAt = 0;
+  const clockTime = seconds => `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
+  function seekPosition() {
+    const at = player.getCurrentTime();
+    // Rapid taps accumulate even before YouTube reports the previous seek.
+    if (pendingSeek !== null && Date.now() - pendingSeekAt < 2000 && Math.abs(at - pendingSeek) > 2) return pendingSeek;
+    pendingSeek = null; return at;
+  }
+  function updateTransport() {
+    if (!ready || !video) return;
+    const duration = player.getDuration(), at = seekPosition();
+    const disabled = !duration || hushed;
+    $("seek-back").disabled = $("seek-ahead").disabled = $("timeline").disabled = disabled;
+    $("timeline").max = Math.floor(duration || 0);
+    if (!scrubbing) $("timeline").value = Math.floor(at);
+    const display = scrubbing ? +$("timeline").value : at;
+    $("seek-time").textContent = `${clockTime(display)} / ${clockTime(duration || 0)}`;
+    $("timeline").setAttribute("aria-valuetext", `${clockTime(display)} of ${clockTime(duration || 0)}`);
+    const paused = player.getPlayerState() === YT.PlayerState.PAUSED;
+    $("play-toggle").textContent = paused ? "▶" : "Ⅱ";
+    $("play-toggle").setAttribute("aria-label", paused ? "Play video" : "Pause video");
+  }
+  function seekToPosition(seconds) {
+    if (!ready || !video || hushed) return;
+    const duration = player.getDuration();
+    if (!duration || !Number.isFinite(seconds)) return;
+    pendingSeek = Math.max(0, Math.min(duration, seconds)); pendingSeekAt = Date.now();
+    player.seekTo(pendingSeek, true);
+    // Release the end-screen shield immediately when rewinding.
+    $("card").classList.toggle("endzone", duration - pendingSeek <= 22);
+    updateTransport();
+  }
+  $("seek-back").onclick = () => { if (ready) seekToPosition(seekPosition() - 10); };
+  $("seek-ahead").onclick = () => { if (ready) seekToPosition(seekPosition() + 10); };
+  $("timeline").onpointerdown = () => { scrubbing = true; };
+  $("timeline").oninput = () => seekToPosition(+$("timeline").value);
+  $("timeline").onchange = () => { scrubbing = false; seekToPosition(+$("timeline").value); };
+  $("timeline").onpointerup = $("timeline").onpointercancel = $("timeline").onblur = () => { scrubbing = false; updateTransport(); };
+  $("play-toggle").onclick = () => {
+    if (!ready || !video) return;
+    if (player.getPlayerState() === YT.PlayerState.PLAYING) player.pauseVideo();
+    else player.playVideo();
+  };
   $("up").onclick = () => {
     if (!video) return;
     const id = video[0];
@@ -1080,6 +1152,7 @@
             if (!autoBig) { autoBig = true; setBig(true); }
           }
           if (e.data === S.PAUSED) $("paused").classList.add("show");
+          updateTransport();
           // Finishing, or stopping after ~80%, counts as complete. The confetti waits until then
           // so it doesn't pop mid-routine.
           if (e.data === S.ENDED || (e.data === S.PAUSED && reached)) markDone();
@@ -1093,6 +1166,7 @@
             const want = video ? secs(video[3]) : dur;
             if (hushed && now >= 1 && (Math.abs(dur - want) <= Math.max(4, want * 0.06) || now >= 15)) unhush();
             c.classList.toggle("endzone", dur - now <= 22);
+            updateTransport();
           }, 1000);
         },
         // 100 = removed, 101/150 = owner disabled embedding. Hide it and move on.
