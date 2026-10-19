@@ -1288,7 +1288,7 @@
     try {
       const r = await fetch(endpoint + path, { method: "POST", keepalive, signal: controller?.signal, body: JSON.stringify(body || {}),
         headers: { "Content-Type": "application/json", ...(syncToken ? { Authorization: `Bearer ${syncToken}` } : {}) } });
-      const j = await r.json().catch(() => ({}));
+      const j = await r.json().catch(e => { if (controller?.signal.aborted) throw e; return {}; });
       if (r.status === 401 && syncToken) { syncToken = null; store.set("syncToken", null); paintAcct(); }
       if (!r.ok) throw new Error(j.error || "Couldn't reach the server. Try again in a moment.");
       return j;

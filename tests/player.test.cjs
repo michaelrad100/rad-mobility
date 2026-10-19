@@ -48,13 +48,13 @@ function app({ signedIn = true, seed = {} } = {}) {
     location: { hostname: 'localhost', pathname: '/', origin: 'http://localhost' }, navigator: {},
     matchMedia: () => ({ matches: true }),
     localStorage: { getItem: k => data.get(k) ?? null, setItem: (k, v) => data.set(k, v) },
-    addEventListener() {}, scrollTo() {},
+    addEventListener() {}, scrollTo() {}, AbortController, DOMException, URL,
     setTimeout(fn, ms) { const id = ++nextTimer; timers.set(id, { fn, ms }); return id; },
     clearTimeout(id) { timers.delete(id); },
     setInterval(fn) { interval = fn; return 1; }, clearInterval() { interval = null; },
     fetch: (url, options) => {
       requests.push({ url, body: JSON.parse(options.body) });
-      return new Promise(resolve => recommendations.push(resolve));
+      return new Promise((resolve, reject) => { recommendations.push(resolve); options.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError"))); });
     },
     YT: {
       PlayerState: { PLAYING: 1, PAUSED: 2, BUFFERING: 3, ENDED: 0, CUED: 5 },
@@ -94,6 +94,10 @@ function app({ signedIn = true, seed = {} } = {}) {
     seeks,
     requests,
     instances, cues,
+    async respond(body, status = 200) {
+      recommendations.shift()({ok: status < 400, status, json: async () => body});
+      await new Promise(resolve => setImmediate(resolve));
+    },
     timeout(ms) {
       for (const [id, timer] of [...timers]) if (timer.ms === ms) { timers.delete(id); timer.fn(); }
     },
@@ -537,4 +541,25 @@ test('an added routine still receives its full completion time through Finish ro
   assert.equal(a.get('finish-routine').hidden,false); a.get('finish-routine').onclick();
   const [day]=a.stored('doneDays'); assert.equal(a.stored('time')[day][v.id],1200);
   assert.ok(Object.values(a.stored('videoTimeline')).some(e=>e.videoId===v.id && e.finishedAt));
+});
+
+test('editing an import discards its late lookup and keeps the latest rotation choice', async () => {
+ const a=app({signedIn:false}); a.get('import-url').value='https://youtu.be/cacwri2wio4'; a.get('import-mode').value='morning';
+ const stale=a.context.findImport();
+ a.get('import-url').value='https://youtu.be/jj2AAH6jbHk'; a.get('import-url').oninput(); a.get('import-mode').value='evening';
+ await a.respond({type:'video',videos:[{id:'cacwri2wio4',title:'Stale',channel:'Creator',length:'6:51'}]}); await stale;
+ assert.equal(a.get('import-save').hidden,true);
+ const latest=a.context.findImport();
+ await a.respond({type:'video',videos:[{id:'jj2AAH6jbHk',title:'Latest',channel:'Creator',length:'13:54'}]}); await latest;
+ a.get('import-save').onclick();
+ assert.deepEqual(Object.keys(a.stored('personalVideos')),['evening:jj2AAH6jbHk']);
+});
+
+test('a timed-out import shows an inline retry message and leaves playback available', async () => {
+ const a=app({signedIn:false}), id=a.selected();
+ a.get('import-url').value='https://youtu.be/cacwri2wio4'; a.get('import-mode').value='morning';
+ const pending=a.context.findImport(); a.timeout(20000); await pending;
+ assert.match(a.get('import-status').textContent,/took too long/);
+ assert.equal(a.get('import-find').disabled,false); assert.equal(a.get('import-save').hidden,true);
+ assert.equal(a.selected(),id); assert.match(a.get('yt').src,new RegExp(id));
 });
