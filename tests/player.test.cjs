@@ -22,28 +22,33 @@ function app({ signedIn = true } = {}) {
       },
       style: {}, content: '2.4', textContent: '', hidden: false,
       setAttribute() {}, appendChild() {}, addEventListener() {},
+      replaceWith(node) { elements.set(this.id, node); },
+      prepend(node) { elements.set(node.id, node); },
     };
   };
   const elements = new Map();
   const get = id => {
-    if (!elements.has(id)) elements.set(id, element());
+    if (!elements.has(id)) { const node = element(); node.id = id; elements.set(id, node); }
     return elements.get(id);
   };
   const recommendations = [];
   const requests = [];
+  const instances = [], cues = [], timers = new Map(); let nextTimer = 0;
   const data = new Map(signedIn ? [['syncToken', JSON.stringify('test-only')]] : []);
   let options, loadedId, player, playCalls = 0, pauseCalls = 0;
   let position = 20, duration = 600, state = -1, interval;
   const seeks = [];
   const context = vm.createContext({
     document: {
-      body: element(), getElementById: get, createElement: element,
+      body: element(), head: element(), getElementById: get, createElement: element,
       querySelector: get, querySelectorAll: () => [], addEventListener() {},
     },
-    location: { hostname: 'localhost', pathname: '/' }, navigator: {},
+    location: { hostname: 'localhost', pathname: '/', origin: 'http://localhost' }, navigator: {},
     matchMedia: () => ({ matches: true }),
     localStorage: { getItem: k => data.get(k) ?? null, setItem: (k, v) => data.set(k, v) },
-    addEventListener() {}, setTimeout() {}, clearTimeout() {},
+    addEventListener() {},
+    setTimeout(fn, ms) { const id = ++nextTimer; timers.set(id, { fn, ms }); return id; },
+    clearTimeout(id) { timers.delete(id); },
     setInterval(fn) { interval = fn; return 1; }, clearInterval() { interval = null; },
     fetch: (url, options) => {
       requests.push({ url, body: JSON.parse(options.body) });
@@ -53,8 +58,10 @@ function app({ signedIn = true } = {}) {
       PlayerState: { PLAYING: 1, PAUSED: 2, BUFFERING: 3, ENDED: 0, CUED: 5 },
       Player: function (_id, config) {
         options = config; loadedId = config.videoId;
+        instances.push(config);
         player = {
-          cueVideoById(id) { loadedId = id; },
+          cueVideoById(id) { loadedId = id; cues.push(id); },
+          destroy() {},
           playVideo() { playCalls++; },
           pauseVideo() { pauseCalls++; },
           getCurrentTime: () => position, getDuration: () => duration, getPlayerState: () => state,
@@ -78,6 +85,10 @@ function app({ signedIn = true } = {}) {
     pauseCalls: () => pauseCalls,
     seeks,
     requests,
+    instances, cues,
+    timeout(ms) {
+      for (const [id, timer] of [...timers]) if (timer.ms === ms) { timers.delete(id); timer.fn(); }
+    },
     stored: key => JSON.parse(data.get(key) || 'null'),
     position: at => { position = at; },
     duration: seconds => { duration = seconds; },
@@ -95,14 +106,16 @@ function app({ signedIn = true } = {}) {
   };
 }
 
-test('signed-in recommendation arriving between player construction and readiness is playable', async () => {
+test('API arriving before the recommendation never constructs an empty player', async () => {
   const a = app();
   a.construct();
   assert.equal(a.loaded(), undefined);
+  assert.equal(a.instances.length, 0);
   const id = await a.recommend();
   assert.equal(a.selected(), id);
   a.ready();
   assert.equal(a.loaded(), id);
+  assert.deepEqual(a.cues, []); // the initial video must not reload on ready
 });
 
 test('a mode change before player readiness cues the latest card, not the initial video', async () => {
@@ -117,22 +130,24 @@ test('a mode change before player readiness cues the latest card, not the initia
   assert.equal(a.loaded(), latest);
 });
 
-test('a recommendation arriving after player readiness is still cued', async () => {
+test('a recommendation arriving after API availability constructs the selected video; next reuses it', async () => {
   const a = app();
-  a.construct(); a.ready();
+  a.construct();
   const id = await a.recommend();
+  a.ready();
   assert.equal(a.loaded(), id);
   const pending = a.get('next').onclick();
   const nextId = await a.recommend(1);
   await pending;
   assert.equal(a.loaded(), nextId);
+  assert.equal(a.instances.length, 1);
 });
 
 test('an exhausted queue stays hidden when the player becomes ready', async () => {
   const a = app();
   a.construct();
   await a.recommend(0, true);
-  a.ready();
+  assert.equal(a.instances.length, 0);
   assert.equal(a.loaded(), undefined);
   assert.equal(a.get('card').hidden, true);
 });
@@ -162,7 +177,7 @@ test('the visible poster is an actual button whose tap starts the ready player s
 
 test('the play button remains disabled without a selected routine', async () => {
   const a = app();
-  a.construct(); a.ready();
+  a.construct();
   await a.recommend(0, true);
   assert.equal(a.get('poster').disabled, true);
   a.get('poster').onclick();
@@ -276,8 +291,9 @@ test('finishing a paused routine records credit and advances without counting it
 
 test('signed-in completion credit goes into the next recommendation request', async () => {
   const a = app();
-  a.construct(); a.ready();
+  a.construct();
   const id = await a.recommend();
+  a.ready();
   a.state(1); a.tick();
   a.get('timeline').value = 580; a.get('timeline').oninput();
   const pending = a.get('finish-routine').onclick();
@@ -298,4 +314,74 @@ test('Finish routine is unavailable while loading or during pre-roll', () => {
   assert.equal(a.get('finish-routine').hidden, true);
   a.get('finish-routine').onclick();
   assert.equal(a.stored('time'), null);
+});
+
+test('stalled player exposes native playback and retry after ten seconds; recovery restores readiness', () => {
+  const a = app({ signedIn: false });
+  a.construct();
+  const initial = a.instances[0];
+  a.timeout(10000);
+  assert.equal(a.get('poster').classList.contains('hidden'), true);
+  assert.equal(a.get('player-help').hidden, false);
+  const id = a.selected();
+  a.get('retry-player').onclick();
+  assert.equal(a.instances.length, 2);
+  assert.equal(a.selected(), id); // retry does not consume another recommendation
+  initial.events.onReady(); // late readiness from the destroyed player is ignored
+  assert.equal(a.get('poster').disabled, true);
+  a.ready();
+  assert.equal(a.get('poster').disabled, false);
+  assert.equal(a.get('player-help').hidden, true);
+  a.timeout(10000);
+  assert.equal(a.get('player-help').hidden, true);
+});
+
+test('missing API script falls back to an independent embed and follows new cards', () => {
+  const a = app({ signedIn: false });
+  a.timeout(10000);
+  const first = a.get('yt');
+  assert.match(first.src, new RegExp('/embed/' + a.selected()));
+  assert.equal(a.get('player-help').hidden, false);
+  a.timeout(10000);
+  assert.equal(a.get('yt'), first); // repeated fallback must not restart native playback
+  a.get('next').onclick();
+  assert.match(a.get('yt').src, new RegExp('/embed/' + a.selected()));
+  assert.notEqual(a.get('yt'), first);
+  a.construct(); a.ready();
+  assert.equal(a.get('player-help').hidden, true);
+  assert.equal(a.get('poster').disabled, false);
+});
+
+test('a card change replaces a stalled player and ignores its late callbacks', () => {
+  const a = app({ signedIn: false });
+  a.construct();
+  const stale = a.instances[0], initial = a.selected();
+  a.get('next').onclick();
+  assert.equal(a.instances.length, 2);
+  assert.notEqual(a.selected(), initial);
+  stale.events.onReady();
+  stale.events.onStateChange({ data: 1 });
+  assert.equal(a.get('poster').disabled, true);
+  assert.equal(a.get('card').classList.contains('playing'), false);
+  a.ready();
+  assert.equal(a.loaded(), a.selected());
+});
+
+test('constructor failure reveals a usable embed rather than abandoning startup', () => {
+  const a = app({ signedIn: false });
+  a.context.YT.Player = function () { throw new Error('Test player unavailable'); };
+  a.construct();
+  assert.equal(a.get('player-help').hidden, false);
+  assert.match(a.get('yt').src, new RegExp('/embed/' + a.selected()));
+});
+
+test('native fallback still lets the user record completion credit', () => {
+  const a = app({ signedIn: false }), id = a.selected();
+  a.timeout(10000);
+  a.get('fallback-finish').onclick();
+  const [day] = a.stored('doneDays');
+  assert.ok(a.stored('time')[day][id] > 0);
+  assert.notEqual(a.selected(), id);
+  a.get('fallback-finish').onclick();
+  assert.deepEqual(Object.keys(a.stored('time')[day]), [id]);
 });
