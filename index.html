@@ -1147,10 +1147,11 @@
       if (!["video","creator"].includes(result.type) || !Array.isArray(result.videos) || (result.type === "creator" && !result.creator)) throw new Error("Couldn’t read that YouTube link. Try again.");
       const videos = result.videos.map(v => ({ ...v, mode: ["morning","evening","both"].includes(v.mode) ? v.mode : Library.classify(v) }));
       importPreview = { ...result, videos, selected: new Set(videos.filter(v => !knownVideo(v.id)).map(v => v.id)) };
+      const alreadyKnown = videos.length - importPreview.selected.size;
       $("import-status").textContent = result.type === "creator"
-        ? `${result.creator.title} · Choose routines to add. Rotations are selected automatically.`
+        ? `${result.creator.title} · ${importPreview.selected.size} new routines${alreadyKnown ? ` · ${alreadyKnown} already in your library` : ""}. Choose which to add.`
         : "Not in your library. Add it?";
-      for (const v of videos) {
+      for (const v of videos.filter(v => result.type !== "creator" || !knownVideo(v.id))) {
         const exists = knownVideo(v.id), label = document.createElement(result.type === "creator" ? "label" : "div"); label.className = "import-choice";
         if (result.type === "creator") {
           const check = document.createElement("input"); check.type = "checkbox"; check.checked = !exists; check.disabled = !!exists;
