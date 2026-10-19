@@ -34,4 +34,6 @@ Version 2.9 waits for both the YouTube API and a valid selected video before con
 
 Version 3.0 also stops the old progress timer when a playing video fails or the player is rebuilt, so it cannot poll a replacement before it is ready.
 
+Version 3.1 restores direct native playback: the selected YouTube iframe loads immediately and its Play button is never covered by an app loading overlay. The API attaches to that same iframe in the background to add seeking, completion tracking and Finish routine. Attaching to an already playing video preserves playback and starts tracking without re-cueing it. The decorative poster is only used for the explicit YouTube-app handoff.
+
 Deploy the updated sync service **before** publishing app version 2.4: the app requires its `/recommend` endpoint. The backend remains compatible with older apps' `/sync` requests. Merging app changes to main publishes GitHub Pages and triggers a michaelrad.me rebuild, as described in `CLAUDE.md`.
