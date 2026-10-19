@@ -13,3 +13,16 @@ test('personal pools deduplicate shared entries and removals survive stale sync'
   assert.equal(Library.pool({morning:[]},removed,'morning').length,0);
   assert.deepEqual(Library.clean({'__proto__':v,'evening:cacwri2wio4':v}),{});
 });
+
+test('rotation inference uses video context, with explicit title timing taking priority',()=>{
+ for(const [title,description,expected] of [
+  ['Relaxing Morning Stretch','A wind-down routine for sleep','morning'],
+  ['Evening Mobility','An energizing morning practice','evening'],
+  ['Full body mobility','This routine is designed to help you unwind before bed.','evening'],
+  ['Wake Up and Move','','morning'],
+  ['Relaxing full body stretch','','evening'],
+  ['Full body mobility','','both'],
+  ['Morning or evening mobility','','both'],
+  ['Full body mobility','Find more at https://example.com/morning','both']
+ ]) assert.equal(Library.classify({title,description}),expected,title);
+});
