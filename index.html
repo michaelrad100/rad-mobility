@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="3.1">
+<meta name="version" content="3.2">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -315,6 +315,14 @@
   .fav .t { font-family: var(--serif); font-size: 16px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .fav .s { font-size: 12.5px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .fav .thumb { flex-shrink: 0; width: 40px; height: 36px; }
+  .recent-button { display: block; margin: 6px auto 0; min-height: 44px; font-size: 14px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+  .timeline-search { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--fg); font: inherit; margin-bottom: 8px; }
+  .timeline-entry { width: 100%; display: flex; align-items: center; gap: 12px; padding: 14px 0; text-align: left; border-bottom: 1px solid var(--line); }
+  .timeline-entry img { width: 88px; aspect-ratio: 16/9; object-fit: cover; border-radius: 10px; flex-shrink: 0; }
+  .timeline-entry .t { font-family: var(--serif); font-size: 16px; line-height: 1.25; }
+  .timeline-entry .s, .timeline-entry .state { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+  .timeline-entry .state { color: var(--fg); }
+  .timeline-day { font-size: 13px; color: var(--muted); margin: 22px 0 2px; }
   .fav-empty { color: var(--muted); font-size: 15px; padding: 18px 0 8px; line-height: 1.5; }
   body.sheet-open { overflow: hidden; }
   /* Pull-to-refresh: home-screen apps on iPhone don't get Safari's, so we draw our own. Tucked above the top edge until you pull. */
@@ -406,6 +414,7 @@
   <button class="next" id="next">Show me another
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
   </button>
+  <button class="recent-button" id="recent">Recently shown</button>
   <label class="pref">Play in the YouTube app <input type="checkbox" class="switch" id="appmode"></label>
   <button class="acct" id="acct" hidden></button>
   <div class="version" id="version"></div>
@@ -461,7 +470,22 @@
     </div>
   </div>
 
+  <div class="sheet-wrap" id="recent-sheet" role="dialog" aria-modal="true" aria-labelledby="recent-title">
+    <div class="scrim" id="recent-scrim"></div>
+    <div class="sheet">
+      <div class="sheet-head">
+        <div><h2 id="recent-title">Recently shown</h2><p class="sub">Every routine shown to you, including ones you skipped or refreshed past. Tap one to bring it back.</p></div>
+        <button class="mode" id="recent-close" aria-label="Close recently shown">✕</button>
+      </div>
+      <input class="timeline-search" type="search" id="timeline-search" aria-label="Search shown videos" placeholder="Search titles or creators">
+      <p class="note" id="timeline-note"></p>
+      <div id="timeline-list"></div>
+      <button class="recent-button" id="timeline-more" hidden>Load earlier videos</button>
+    </div>
+  </div>
+
 <script src="videos.js"></script>
+<script src="timeline.js"></script>
 <script>
   // ---- storage (safe if localStorage is unavailable) ----
   const store = {
@@ -478,6 +502,33 @@
     for (const id of Object.keys(videos)) lastShown[id] = Math.max(lastShown[id] || 0, Date.parse(day + "T12:00:00Z"));
   }
   store.set("lastShown", lastShown);
+  let timeline = Timeline.clean(store.get("videoTimeline", {}));
+  const timelinePending = new Set(store.get("timelinePending", Object.keys(timeline)).filter(key => timeline[key]));
+  let timelineCurrent = null, explicitReplay = false;
+  function persistTimeline() {
+    store.set("videoTimeline", timeline); store.set("timelinePending", [...timelinePending]);
+  }
+  function backfillTimeline(excludeId) {
+    const entries = Timeline.backfill(timeline, lastShown, VIDEOS, excludeId);
+    timeline = Timeline.merge(timeline, entries);
+    Object.keys(entries).forEach(key => timelinePending.add(key));
+    persistTimeline();
+  }
+  backfillTimeline();
+  function recordAppearance(v) {
+    const key = "event-" + (window.crypto?.randomUUID?.() || `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`);
+    timelineCurrent = key;
+    timeline[key] = Timeline.clean({ [key]: { videoId: v[0], mode, shownAt: Date.now(), title: v[1], channel: v[2], length: v[3], startedAt: 0, finishedAt: 0, legacy: false } })[key];
+    timelinePending.add(key); persistTimeline();
+    if ($("recent-sheet").classList.contains("show")) renderRecent();
+  }
+  function updateAppearance(field, id = video && video[0], key = timelineCurrent) {
+    const entry = timeline[key];
+    if (!entry || entry.videoId !== id || entry[field]) return;
+    entry[field] = Math.max(Date.now(), entry.shownAt);
+    timelinePending.add(key); persistTimeline(); queueSync();
+    if ($("recent-sheet").classList.contains("show")) renderRecent();
+  }
   let appMode = store.get("appMode", false);             // play in the YouTube app (ad-free with Premium)
   // Each thumbs up/down also notes when it happened, so signed-in devices can merge them (newest wins).
   // Likes from before this existed get tiny times, in order, so any real change beats them.
@@ -569,7 +620,7 @@
 
   // m: which routine was finished, so the day's dot can show morning, evening, or both.
   // id: which video, so its length adds to the time total (once per video per day).
-  const lengthOf = (id) => { const v = [...VIDEOS.morning, ...VIDEOS.evening].find(x => x[0] === id); return v ? secs(v[3]) : 0; };
+  const lengthOf = (id) => { const v = [...VIDEOS.morning, ...VIDEOS.evening].find(x => x[0] === id); const saved = Object.values(timeline).find(e => e.videoId === id && e.length); return v ? secs(v[3]) : saved ? secs(saved.length) : 0; };
   function saveToday(m = videoMode, id = video && video[0]) {
     const k = dayKey(new Date()), s = sessions[k] || [], len = lengthOf(id);
     const newTime = len > 0 && !(time[k] && time[k][id]);
@@ -581,7 +632,8 @@
   }
 
   // A video was completed: count the day and celebrate, once per video.
-  function markDone(m = videoMode, id = video && video[0]) {
+  function markDone(m = videoMode, id = video && video[0], eventKey = timelineCurrent) {
+    updateAppearance("finishedAt", id, eventKey);
     saveToday(m, id);
     if (celebrated) return;
     celebrated = true;
@@ -655,7 +707,7 @@
       if (syncToken) {
         // The server merges history and reserves this choice atomically, before the card is shown.
         const result = await api("/recommend", { mode, ids: VIDEOS[mode].map(v => v[0]), excludeId, data: localData() });
-        applySynced(result.data);
+        applySynced(result.data, result.id);
         v = VIDEOS[requestedMode].find(v => v[0] === result.id) || null;
       } else v = pick(excludeId);
       if (request === selection && requestedMode === mode) show(v, true);
@@ -667,8 +719,9 @@
     } finally { if (request === selection) $("next").disabled = false; }
   }
 
-  function show(v, animate) {
+  function show(v, animate, replay = false) {
     video = v; videoMode = mode; reached = celebrated = false;
+    explicitReplay = replay;
     $("finish-routine").hidden = true;
     paintPlay();
     scrubbing = false; pendingSeek = null;
@@ -688,7 +741,8 @@
       else toast("Try the other routine, or choose one of your favorites.");
       return;
     }
-    lastShown[v[0]] = Math.max(Date.now(), ...Object.values(lastShown).map(at => at + 1)); store.set("lastShown", lastShown); queueSync();
+    lastShown[v[0]] = Math.max(Date.now(), ...Object.values(lastShown).map(at => at + 1)); store.set("lastShown", lastShown);
+    recordAppearance(v); queueSync();
     $("channel").textContent = v[2];
     $("up").classList.toggle("on", liked.has(v[0]));
     $("title").textContent = v[1];
@@ -813,7 +867,7 @@
     toast("Removed from your queue", () => { setBlocked(v[0], false); show(v, true); });
   };
   // Leaving for the YouTube app: remember what was playing so we can ask "Finished?" on return.
-  const handoff = () => { if (video) store.set("pending", { id: video[0], title: video[1], mode: videoMode, at: Date.now() }); };
+  const handoff = () => { if (video) store.set("pending", { id: video[0], title: video[1], mode: videoMode, eventKey: timelineCurrent, at: Date.now() }); };
   $("applink").addEventListener("click", handoff);
   $("fallback-link").addEventListener("click", handoff);
   let lastFallbackFinish = 0;
@@ -833,7 +887,7 @@
     $("finish").classList.add("show");
   }
   const closeFinish = () => { $("finish").classList.remove("show"); store.set("pending", null); };
-  $("finish-yes").onclick = () => { const p = store.get("pending", {}) || {}; closeFinish(); celebrated = false; markDone(p.mode, p.id); next(); };   // line up a fresh one for next time
+  $("finish-yes").onclick = () => { const p = store.get("pending", {}) || {}; closeFinish(); celebrated = false; markDone(p.mode, p.id, p.eventKey || null); next(); };   // line up a fresh one for next time
   $("finish-no").onclick = closeFinish;
 
   $("appmode").checked = appMode;
@@ -894,7 +948,7 @@
   const lockForSheets = () => document.body.classList.toggle("sheet-open", !!document.querySelector(".sheet-wrap.show"));
   $("favs").onclick = openFavs;
   $("sheet-close").onclick = $("scrim").onclick = closeFavs;
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeFavs(); closeAcct(); closeHist(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeFavs(); closeAcct(); closeHist(); closeRecent(); } });
 
 
   // ---- history: a month at a time, each finished day filled in morning / evening / both ----
@@ -986,6 +1040,62 @@
   function closeHist() { $("hist-sheet").classList.remove("show"); lockForSheets(); }
   $("totals").onclick = openHist;
   $("hist-close").onclick = $("hist-scrim").onclick = closeHist;
+  // ---- every shown card: replaying is an explicit choice, independent of rotation ----
+  let recentLimit = 80;
+  function timelineItems(query = "") {
+    const q = query.trim().toLocaleLowerCase();
+    return Object.entries(timeline).filter(([, e]) => !q || `${e.title} ${e.channel}`.toLocaleLowerCase().includes(q))
+      .sort((a, b) => b[1].shownAt - a[1].shownAt || a[0].localeCompare(b[0]));
+  }
+  function renderRecent() {
+    const list = $("timeline-list"), items = timelineItems($("timeline-search").value);
+    list.innerHTML = "";
+    $("timeline-note").textContent = Object.values(timeline).some(e => e.legacy)
+      ? "Earlier entries may include only a routine’s last saved appearance. Shown includes skipped or refreshed videos."
+      : "Shown includes skipped or refreshed videos. Started means playback began; Finished means completion was recorded.";
+    const completed = new Set(Object.values(time).flatMap(videos => Object.keys(videos)));
+    let lastDay = "";
+    for (const [key, e] of items.slice(0, recentLimit)) {
+      const date = new Date(e.shownAt), day = dayKey(date);
+      if (day !== lastDay) {
+        const heading = document.createElement("h3"); heading.className = "timeline-day";
+        heading.textContent = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+        list.appendChild(heading); lastDay = day;
+      }
+      const row = document.createElement("button"); row.className = "timeline-entry";
+      const img = document.createElement("img"); img.alt = ""; img.loading = "lazy";
+      img.src = `https://i.ytimg.com/vi/${e.videoId}/mqdefault.jpg`;
+      const body = document.createElement("div"), title = document.createElement("div"), detail = document.createElement("div"), state = document.createElement("div");
+      title.className = "t"; title.textContent = e.title || "Previously shown routine";
+      detail.className = "s"; detail.textContent = [e.channel, e.length, e.mode === "evening" ? "Evening" : "Morning"].filter(Boolean).join(" · ");
+      const status = e.finishedAt ? "Finished" : e.startedAt ? "Started" : e.legacy ? completed.has(e.videoId) ? "Finished previously" : "Previously shown" : "Shown";
+      state.className = "state"; state.textContent = e.legacy ? status : `${date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })} · ${status}`;
+      body.appendChild(title); body.appendChild(detail); body.appendChild(state);
+      row.appendChild(img); row.appendChild(body);
+      row.onclick = () => replayTimeline(key);
+      list.appendChild(row);
+    }
+    if (!items.length) { const empty = document.createElement("p"); empty.className = "fav-empty"; empty.textContent = "No matching routines yet."; list.appendChild(empty); }
+    $("timeline-more").hidden = items.length <= recentLimit;
+  }
+  function replayTimeline(key) {
+    const e = timeline[key]; if (!e) return;
+    const v = VIDEOS[e.mode].find(v => v[0] === e.videoId) || [e.videoId, e.title, e.channel, e.length];
+    closeRecent(); ++selection; $("next").disabled = false;
+    if (mode !== e.mode) { mode = e.mode; applyMode(); }
+    show(v, true, true); scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function openRecent() {
+    recentLimit = 80; $("timeline-search").value = ""; renderRecent();
+    $("recent-sheet").classList.add("show"); lockForSheets();
+    $("recent-sheet").querySelector(".sheet").scrollTop = 0; $("recent-close").focus();
+    if (syncToken) sync();
+  }
+  function closeRecent() { $("recent-sheet").classList.remove("show"); lockForSheets(); }
+  $("recent").onclick = openRecent;
+  $("recent-close").onclick = $("recent-scrim").onclick = closeRecent;
+  $("timeline-search").oninput = () => { recentLimit = 80; renderRecent(); };
+  $("timeline-more").onclick = () => { recentLimit += 80; renderRecent(); };
   $("cal-prev").onclick = () => shiftMonth(-1);
   $("cal-next").onclick = () => shiftMonth(1);
   // Swipe sideways on the calendar to change months.
@@ -1067,13 +1177,17 @@
   }
 
   // What this device knows, in the server's shape. Days from before morning/evening was tracked send [].
-  const localData = () => ({ shown: { ...lastShown }, days: Object.fromEntries([...doneDays].map(k => [k, sessions[k] || []])), time, liked: marks.liked, blocked: marks.blocked });
-  function applySynced(d) {
+  const localData = () => ({ timeline: Object.fromEntries([...timelinePending].filter(key => timeline[key]).slice(0, 200).map(key => [key, timeline[key]])), shown: { ...lastShown }, days: Object.fromEntries([...doneDays].map(k => [k, sessions[k] || []])), time, liked: marks.liked, blocked: marks.blocked });
+  function applySynced(d, upcomingId) {
+    const incoming = Timeline.clean(d.timeline);
+    timeline = Timeline.merge(timeline, incoming);
+    for (const [key, entry] of Object.entries(incoming)) if (JSON.stringify(timeline[key]) === JSON.stringify(entry)) timelinePending.delete(key);
     for (const [id, at] of Object.entries(d.shown || {})) lastShown[id] = Math.max(lastShown[id] || 0, at);
     for (const [day, videos] of Object.entries(d.time || {})) {
       for (const id of Object.keys(videos)) lastShown[id] = Math.max(lastShown[id] || 0, Date.parse(day + "T12:00:00Z"));
     }
     store.set("lastShown", lastShown);
+    backfillTimeline(upcomingId);
     for (const [k, v] of Object.entries(d.days)) { doneDays.add(k); if (v.length) sessions[k] = v; }
     for (const [k, v] of Object.entries(d.time || {})) time[k] = { ...time[k], ...v };
     for (const key of ["liked", "blocked"]) {
@@ -1084,7 +1198,9 @@
     store.set("doneDays", [...doneDays]); store.set("sessions", sessions); store.set("time", time); store.set("marks", marks);
     store.set("liked", [...liked]); store.set("blocked", [...blocked]);
     renderWeek();
-    if (video) { $("up").classList.toggle("on", liked.has(video[0])); if (blocked.has(video[0]) && !$("next").disabled) next(); }
+    if (timelinePending.size && syncToken) queueSync();
+    if ($("recent-sheet").classList.contains("show")) renderRecent();
+    if (video) { $("up").classList.toggle("on", liked.has(video[0])); if (!explicitReplay && blocked.has(video[0]) && !$("next").disabled) next(); }
   }
   // keepalive lets a last sync finish as the app goes to the background.
   async function sync(keepalive) {
@@ -1246,6 +1362,7 @@
   function handlePlayerState(e, generation) {
     if (generation !== playerGeneration) return;
     const S = YT.PlayerState, c = $("card");
+    if (e.data === S.PLAYING && !hushed) updateAppearance("startedAt");
     if (e.data === S.PLAYING || e.data === S.BUFFERING) {
       $("poster").classList.add("hidden"); c.classList.add("playing"); $("paused").classList.remove("show");
       if (!autoBig) { autoBig = true; setBig(true); }
@@ -1264,6 +1381,7 @@
       if (now / dur >= 0.8 && !reached) { reached = true; saveToday(); }
       const want = video ? secs(video[3]) : dur;
       if (hushed && now >= 1 && (Math.abs(dur - want) <= Math.max(4, want * 0.06) || now >= 15)) unhush();
+      if (!hushed) updateAppearance("startedAt");
       c.classList.toggle("endzone", dur - now <= 22);
       updateTransport();
     }, 1000);
