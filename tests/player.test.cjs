@@ -494,14 +494,14 @@ test('one searchable library contains liked videos and personal additions', () =
   assert.equal(a.get('recent-sheet').classList.contains('show'), true);
   assert.equal(a.context.libraryItems().length, 1);
   assert.equal(a.context.libraryItems('this title does not exist').length, 0);
-  a.get('filter-recent').onclick();
+  a.get('library-view').value='recent'; a.get('library-view').onchange();
   assert.ok(a.context.timelineItems().some(([,e]) => e.videoId === id));
   assert.equal(a.get('recent-sheet').classList.contains('show'), true);
 });
 
 test('adding a video to both rotations persists without changing playback, likes or credit', () => {
   const a = app({ signedIn: false }), original = a.selected();
-  a.context.importFixture = { type: 'video', target: 'both', videos: [{ id: 'newVid12345', title: 'My routine', channel: 'My creator', length: '20:00' }], selected: new Set(['newVid12345']) };
+  a.context.importFixture = { type: 'video', videos: [{ id: 'newVid12345', title: 'My routine', channel: 'My creator', length: '20:00' }], selected: new Set(['newVid12345']) };
   vm.runInContext('importPreview = importFixture; saveImport();', a.context);
   assert.equal(Object.keys(a.stored('personalVideos')).length, 2);
   assert.equal(a.selected(), original);
@@ -509,8 +509,8 @@ test('adding a video to both rotations persists without changing playback, likes
   assert.ok(vm.runInContext('pool("morning").some(v => v[0] === "newVid12345")', a.context));
   assert.ok(vm.runInContext('pool("evening").some(v => v[0] === "newVid12345")', a.context));
   const b = app({ signedIn: false, seed: {personalVideos: a.stored('personalVideos')} });
-  b.get('filter-added').onclick();
-  assert.equal(b.context.libraryItems('My creator').length, 2);
+  b.get('library-view').value='added'; b.get('library-view').onchange();
+  assert.equal(b.context.libraryItems('My creator').length, 1);
 });
 
 test('signed-in personal metadata joins recommendation requests and stale sync cannot undo removal', async () => {
@@ -527,7 +527,7 @@ test('signed-in personal metadata joins recommendation requests and stale sync c
 
 test('creator selection imports only chosen videos and saves a reusable creator source', () => {
   const a=app({signedIn:false});
-  a.context.importFixture={type:'creator',target:'evening',creator:{id:'UCU0DZhN-8KFLYO6beSaYljg',title:'Tom Merrick'},videos:[{id:'newVid12345',title:'Selected routine',channel:'Creator',length:'12:00'},{id:'otherVid123',title:'Unselected routine',channel:'Creator',length:'10:00'}],selected:new Set(['newVid12345'])};
+  a.context.importFixture={type:'creator',creator:{id:'UCU0DZhN-8KFLYO6beSaYljg',title:'Tom Merrick'},videos:[{id:'newVid12345',title:'Selected bedtime routine',channel:'Creator',length:'12:00',mode:'evening'},{id:'otherVid123',title:'Unselected routine',channel:'Creator',length:'10:00'}],selected:new Set(['newVid12345'])};
   vm.runInContext('importPreview=importFixture; saveImport()',a.context);
   assert.deepEqual(Object.keys(a.stored('personalVideos')),['evening:newVid12345']);
   assert.equal(a.stored('creators')['evening:UCU0DZhN-8KFLYO6beSaYljg'].title,'Tom Merrick');
@@ -544,25 +544,33 @@ test('an added routine still receives its full completion time through Finish ro
   assert.ok(Object.values(a.stored('videoTimeline')).some(e=>e.videoId===v.id && e.finishedAt));
 });
 
-test('editing an import discards its late lookup and keeps the latest rotation choice', async () => {
- const a=app({signedIn:false}); a.get('import-url').value='https://youtu.be/cacwri2wio4'; a.get('import-mode').value='morning';
+test('editing the one search field discards a stale URL lookup and uses inferred context', async () => {
+ const a=app({signedIn:false}); a.get('timeline-search').value='https://youtu.be/newVid12345';
  const stale=a.context.findImport();
- a.get('import-url').value='https://youtu.be/jj2AAH6jbHk'; a.get('import-url').oninput(); a.get('import-mode').value='evening';
- await a.respond({type:'video',videos:[{id:'cacwri2wio4',title:'Stale',channel:'Creator',length:'6:51'}]}); await stale;
+ a.get('timeline-search').value='https://youtu.be/otherVid123'; a.get('timeline-search').oninput();
+ a.get('library-time').value='morning';a.get('library-time').onchange();
+ await a.respond({type:'video',videos:[{id:'newVid12345',title:'Stale morning routine',channel:'Creator',length:'6:51',mode:'morning'}]}); await stale;
  assert.equal(a.get('import-save').hidden,true);
  const latest=a.context.findImport();
- await a.respond({type:'video',videos:[{id:'jj2AAH6jbHk',title:'Latest',channel:'Creator',length:'13:54'}]}); await latest;
+ await a.respond({type:'video',videos:[{id:'otherVid123',title:'Bedtime stretch',channel:'Creator',length:'13:54',mode:'evening'}]}); await latest;
  a.get('import-save').onclick();
- assert.deepEqual(Object.keys(a.stored('personalVideos')),['evening:jj2AAH6jbHk']);
+ assert.deepEqual(Object.keys(a.stored('personalVideos')),['evening:otherVid123']);
 });
 
-test('a timed-out import shows an inline retry message and leaves playback available', async () => {
+test('a timed-out URL search shows retry without interrupting playback', async () => {
  const a=app({signedIn:false}), id=a.selected();
- a.get('import-url').value='https://youtu.be/cacwri2wio4'; a.get('import-mode').value='morning';
+ a.get('timeline-search').value='https://youtu.be/newVid12345';
  const pending=a.context.findImport(); a.timeout(20000); await pending;
  assert.match(a.get('import-status').textContent,/took too long/);
- assert.equal(a.get('import-find').disabled,false); assert.equal(a.get('import-save').hidden,true);
+ assert.equal(a.get('import-retry').hidden,false); assert.equal(a.get('import-save').hidden,true);
  assert.equal(a.selected(),id); assert.match(a.get('yt').src,new RegExp(id));
+});
+
+test('a known URL uses the library match instead of offering a duplicate import', () => {
+ const a=app({signedIn:false});
+ a.get('timeline-search').value='https://youtu.be/cacwri2wio4?si=share'; a.get('timeline-search').oninput(); a.timeout(350);
+ assert.equal(a.requests.length,0);assert.equal(a.get('import-save').hidden,true);
+ assert.match(a.get('import-status').textContent,/Already in your library/);
 });
 
 test('Next and reload circulate uncompleted cards despite old shown history', () => {
@@ -590,4 +598,23 @@ test('embedding restrictions do not silently save a thumbs-down', () => {
  const a=app({signedIn:false}),id=a.selected();a.construct();a.ready();a.error(101);
  assert.equal(a.selected(),id);assert.equal(a.stored('blocked')?.includes(id)||false,false);
  assert.equal(a.get('player-help').hidden,false);assert.deepEqual(a.stored('watched'),{});
+});
+
+test('time and text filters compose across recent, liked and added lists',()=>{
+ const videos=[{id:'newVid12345',title:'General fixture',mode:'morning'},{id:'newVid12345',title:'General fixture',mode:'evening'},{id:'otherVid123',title:'Bedtime fixture',mode:'evening'},{id:'mornVid1234',title:'Morning fixture',mode:'morning'}];
+ const library=Object.fromEntries(videos.map(v=>[`${v.mode}:${v.id}`,{...v,channel:'Fixture Creator',length:'10:00',updatedAt:1000,removed:false}]));
+ const timeline=Object.fromEntries(videos.map((v,i)=>['event-fixture-'+i,{videoId:v.id,title:v.title,mode:v.mode,channel:'Fixture Creator',length:'10:00',shownAt:1000+i}]));
+ const a=app({signedIn:false,seed:{personalVideos:library,videoTimeline:timeline,liked:[...new Set(videos.map(v=>v.id))]}});
+ a.get('recent').onclick();a.get('timeline-search').value='Fixture Creator';a.get('timeline-search').oninput();
+ a.get('library-time').value='evening';a.get('library-time').onchange();
+ assert.equal(a.context.timelineItems('Fixture Creator').length,2);
+ assert.ok(a.context.timelineItems('Fixture Creator').every(([,e])=>e.mode==='evening'));
+ for(const view of ['liked','added']){
+  a.get('library-view').value=view;a.get('library-view').onchange();
+  assert.equal(a.context.libraryItems('Fixture Creator').length,2);
+  assert.ok(a.context.libraryItems('Fixture Creator').every(e=>e.m==='evening'));
+  assert.equal(a.context.libraryItems('Morning fixture').length,0);
+ }
+ a.get('library-time').value='all';a.get('library-time').onchange();
+ assert.equal(a.context.libraryItems('Fixture Creator').length,3); // both-pool routine is one row
 });

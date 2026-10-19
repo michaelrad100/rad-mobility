@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="3.4">
+<meta name="version" content="3.5">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -290,13 +290,10 @@
   body:not(.evening) .toast button { color: #ffc76a; }
   .toast.show { opacity: .95; transform: translate(-50%, 0); }
 
-  .library-filters { display: flex; gap: 6px; margin-bottom: 14px; }
-  .library-filters button { flex: 1; min-height: 44px; padding: 8px 5px; border: 1px solid var(--line); border-radius: 12px; font-size: 13px; }
-  .library-filters button[aria-pressed="true"] { background: var(--sunset); color: var(--accent-fg); border-color: transparent; }
+  .library-filters { display: flex; gap: 10px; margin: 2px 0 12px; }
+  .library-filters select { flex: 1; min-width: 0; min-height: 44px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--fg); font: inherit; font-size: 14px; }
   .library-add { min-height: 44px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; margin: 4px 0 10px; text-align: left; }
   #import-panel { padding: 12px; border: 1px solid var(--line); border-radius: 14px; margin-bottom: 12px; }
-  #import-panel label { display: block; font-size: 13px; margin-bottom: 6px; }
-  #import-panel select { min-height: 44px; padding: 8px; max-width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--fg); font: inherit; }
   .import-choice { display: flex !important; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); line-height: 1.4; }
   .import-choice input { width: 22px; height: 22px; flex-shrink: 0; }
   .library-row { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
@@ -477,31 +474,23 @@
     <div class="scrim" id="recent-scrim"></div>
     <div class="sheet">
       <div class="sheet-head">
-        <div><h2 id="recent-title">Your video library</h2><p class="sub">Revisit a routine, find one you liked, or add your own.</p></div>
+        <div><h2 id="recent-title">Video library</h2></div>
         <button class="mode" id="recent-close" aria-label="Close video library">✕</button>
       </div>
-      <div class="library-filters" role="group" aria-label="Filter your video library">
-        <button id="filter-recent" aria-pressed="true">Recently shown</button>
-        <button id="filter-liked" aria-pressed="false">Liked</button>
-        <button id="filter-added" aria-pressed="false">Added by you</button>
+      <input class="timeline-search" type="search" id="timeline-search" aria-label="Search videos, creators, or paste a YouTube link" placeholder="Search or paste a YouTube link" autocomplete="off">
+      <div class="library-filters">
+        <select id="library-view" aria-label="Show videos"><option value="recent">Recently shown</option><option value="liked">Liked</option><option value="added">Added by you</option></select>
+        <select id="library-time" aria-label="Time of day"><option value="all">Any time</option><option value="morning">Morning</option><option value="evening">Evening</option></select>
       </div>
-      <input class="timeline-search" type="search" id="timeline-search" aria-label="Search your video library" placeholder="Search titles or creators">
-      <button class="library-add" id="library-add" aria-expanded="false">+ Add a YouTube video or creator</button>
-      <section id="import-panel" hidden aria-label="Add to your rotation">
-        <form id="import-form">
-          <label for="import-url">YouTube video or creator URL</label>
-          <input class="timeline-search" id="import-url" type="url" required placeholder="https://www.youtube.com/…" autocomplete="off">
-          <label for="import-mode">Add to rotation</label>
-          <select id="import-mode"><option value="morning">Morning</option><option value="evening">Evening</option><option value="both">Morning and evening</option></select>
-          <button class="library-add" id="import-find" type="submit">Find videos</button>
-        </form>
+      <section id="import-panel" hidden aria-label="YouTube link">
         <p class="note" id="import-status" role="status" aria-live="polite"></p>
         <div id="import-results"></div>
-        <button class="library-add" id="import-save" hidden>Add selected videos</button>
+        <button class="library-add" id="import-retry" hidden>Try again</button>
+        <button class="library-add" id="import-save" hidden>Add video</button>
       </section>
       <div id="creator-list"></div>
-      <p class="note" id="timeline-note"></p>
       <div id="timeline-list"></div>
+      <p class="note" id="timeline-note" hidden></p>
       <button class="recent-button" id="timeline-more" hidden>Load earlier videos</button>
     </div>
   </div>
@@ -1034,34 +1023,42 @@
   $("totals").onclick = openHist;
   $("hist-close").onclick = $("hist-scrim").onclick = closeHist;
   // ---- every shown card: replaying is an explicit choice, independent of rotation ----
-  let recentLimit = 80, libraryFilter = "recent";
+  let recentLimit = 80, libraryFilter = "recent", libraryTime = "all";
+  const modeLabel = modes => modes.length > 1 ? "Morning & evening" : modes[0] === "evening" ? "Evening" : "Morning";
   function playLibraryVideo(v, m) {
     closeRecent(); ++selection; $("next").disabled = false;
     if (mode !== m) { mode = m; applyMode(); }
     show(v, true, true); scrollTo({ top: 0, behavior: "smooth" });
   }
+  function knownVideo(id) {
+    const modes = ["morning", "evening"].filter(m => catalogVideo(id, m));
+    return modes.length ? { v: catalogVideo(id, modes[0]), modes } : null;
+  }
   function libraryItems(query = "") {
-    const q = query.trim().toLocaleLowerCase();
-    const items = libraryFilter === "added"
-      ? Object.values(personalVideos).filter(e => !e.removed).sort((a, b) => b.updatedAt - a.updatedAt).map(e => ({ v: [e.id, e.title, e.channel, e.length], m: e.mode }))
-      : [...liked].reverse().map(id => {
-        const m = catalogVideo(id, mode) ? mode : ["morning", "evening"].find(m => catalogVideo(id, m));
-        const saved = Object.values(timeline).find(e => e.videoId === id);
-        return m ? { v: catalogVideo(id, m), m } : saved ? { v: [id, saved.title, saved.channel, saved.length], m: saved.mode } : null;
-      }).filter(Boolean);
-    return items.filter(({v}) => !q || `${v[1]} ${v[2]}`.toLocaleLowerCase().includes(q));
+    const q = query.trim().toLocaleLowerCase(), grouped = new Map();
+    if (libraryFilter === "added") {
+      for (const e of Object.values(personalVideos).filter(e => !e.removed).sort((a,b) => b.updatedAt - a.updatedAt)) {
+        if (!grouped.has(e.id)) grouped.set(e.id, { v: [e.id,e.title,e.channel,e.length], modes: [] });
+        grouped.get(e.id).modes.push(e.mode);
+      }
+    } else for (const id of [...liked].reverse()) {
+      const known = knownVideo(id), saved = Object.values(timeline).find(e => e.videoId === id);
+      if (known) grouped.set(id, known);
+      else if (saved) grouped.set(id, { v: [id,saved.title,saved.channel,saved.length], modes: [...new Set(Object.values(timeline).filter(e => e.videoId === id).map(e => e.mode))] });
+    }
+    return [...grouped.values()].filter(({v,modes}) => (libraryTime === "all" || modes.includes(libraryTime)) && (!q || `${v[1]} ${v[2]}`.toLocaleLowerCase().includes(q)))
+      .map(item => ({ ...item, m: libraryTime !== "all" ? libraryTime : item.modes.includes(mode) ? mode : item.modes[0] }));
   }
   function renderLibraryVideos(query) {
     const list = $("timeline-list"), items = libraryItems(query); list.innerHTML = "";
-    $("timeline-note").textContent = libraryFilter === "liked" ? "Your thumbs-up videos, newest likes first. These come around more often."
-      : "Your additions join the selected rotation. Removing an addition keeps its viewing history; videos in the standard catalog remain available.";
-    for (const { v, m } of items.slice(0, recentLimit)) {
+    $("timeline-note").hidden = true;
+    for (const { v, m, modes } of items.slice(0, recentLimit)) {
       const row = document.createElement("div"); row.className = "library-row";
       const go = document.createElement("button"); go.className = "timeline-entry";
       const img = document.createElement("img"); img.src = `https://i.ytimg.com/vi/${v[0]}/mqdefault.jpg`; img.alt = ""; img.loading = "lazy";
       const body = document.createElement("div"), title = document.createElement("div"), detail = document.createElement("div");
       title.className = "t"; title.textContent = v[1]; detail.className = "s";
-      detail.textContent = `${v[2]} · ${v[3]} · ${m === "morning" ? "Morning" : "Evening"}${blocked.has(v[0]) ? " · Hidden from automatic rotation" : ""}`;
+      detail.textContent = `${v[2]} · ${v[3]} · ${modeLabel(libraryTime === "all" ? modes : [m])}${blocked.has(v[0]) ? " · Hidden from automatic rotation" : ""}`;
       body.appendChild(title); body.appendChild(detail); go.appendChild(img); go.appendChild(body);
       go.onclick = () => playLibraryVideo(v, m);
       const action = document.createElement("button"); action.className = "thumb";
@@ -1069,103 +1066,147 @@
         action.innerHTML = UP_ICON; action.classList.add("on"); action.setAttribute("aria-label", `Unlike ${v[1]}`);
         action.onclick = () => { setLiked(v[0], false); if (video?.[0] === v[0]) $("up").classList.remove("on"); toast("Removed from liked videos", () => { setLiked(v[0], true); if (video?.[0] === v[0]) $("up").classList.add("on"); }, "Undo"); };
       } else {
-        action.textContent = "✕"; action.setAttribute("aria-label", `Remove addition: ${v[1]} (${m})`);
+        const removeModes = libraryTime === "all" ? modes : [m];
+        action.textContent = "✕"; action.setAttribute("aria-label", `Remove addition: ${v[1]} (${modeLabel(removeModes)})`);
         action.onclick = () => {
-          const key = `${m}:${v[0]}`; personalVideos[key] = { ...personalVideos[key], removed: true, updatedAt: Math.max(Date.now(), personalVideos[key].updatedAt + 1) };
+          const keys = removeModes.map(m => `${m}:${v[0]}`);
+          for (const key of keys) personalVideos[key] = { ...personalVideos[key], removed: true, updatedAt: Math.max(Date.now(), personalVideos[key].updatedAt + 1) };
           persistLibrary(); queueSync(); renderRecent();
-          toast("Removed from your additions", () => { personalVideos[key] = { ...personalVideos[key], removed: false, updatedAt: Math.max(Date.now(), personalVideos[key].updatedAt + 1) }; persistLibrary(); queueSync(); renderRecent(); }, "Undo");
+          toast("Removed from your additions", () => { for (const key of keys) personalVideos[key] = { ...personalVideos[key], removed: false, updatedAt: Math.max(Date.now(), personalVideos[key].updatedAt + 1) }; persistLibrary(); queueSync(); renderRecent(); }, "Undo");
         };
       }
       row.appendChild(go); row.appendChild(action); list.appendChild(row);
     }
-    if (!items.length) { const empty = document.createElement("p"); empty.className = "fav-empty"; empty.textContent = query ? "No matching videos." : libraryFilter === "liked" ? "Tap the thumbs up on a routine to save it here." : "Add a YouTube video or creator above to build your rotation."; list.appendChild(empty); }
+    if (!items.length) { const empty = document.createElement("p"); empty.className = "fav-empty"; empty.textContent = query ? "No matching videos." : libraryFilter === "liked" ? "Tap the thumbs up on a routine to save it here." : "Paste a YouTube link in search to add a routine or creator."; list.appendChild(empty); }
     $("timeline-more").hidden = items.length <= recentLimit;
   }
   function renderCreators(query) {
     const list = $("creator-list"); list.innerHTML = "";
     if (libraryFilter !== "added") return;
-    for (const creator of Object.values(creators).filter(e => !e.removed && e.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) {
-      const row = document.createElement("div"); row.className = "creator-row";
-      const label = document.createElement("div"); label.textContent = `${creator.title} · ${creator.mode === "morning" ? "Morning" : "Evening"}`;
+    const grouped = new Map();
+    for (const e of Object.values(creators).filter(e => !e.removed && (libraryTime === "all" || e.mode === libraryTime) && e.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) {
+      if (!grouped.has(e.id)) grouped.set(e.id, []); grouped.get(e.id).push(e);
+    }
+    for (const entries of grouped.values()) {
+      const creator = entries[0], row = document.createElement("div"); row.className = "creator-row";
+      const label = document.createElement("div"); label.textContent = `${creator.title} · ${modeLabel(entries.map(e => e.mode))}`;
       const find = document.createElement("button"); find.textContent = "Find more routines";
-      find.onclick = () => {
-        $("import-panel").hidden = false; $("library-add").setAttribute("aria-expanded", "true");
-        $("import-url").value = `https://www.youtube.com/channel/${creator.id}`; $("import-mode").value = creator.mode;
-        findImport();
-      };
+      find.onclick = () => { $("timeline-search").value = `https://www.youtube.com/channel/${creator.id}`; searchLibrary(true); };
       const remove = document.createElement("button"); remove.textContent = "Remove creator";
-      remove.onclick = () => { const key = `${creator.mode}:${creator.id}`; creators[key] = { ...creator, removed: true, updatedAt: Math.max(Date.now(), creator.updatedAt + 1) }; persistLibrary(); queueSync(); renderRecent(); toast("Creator removed. Added videos stay in your rotation."); };
+      remove.onclick = () => { for (const e of entries) creators[`${e.mode}:${e.id}`] = { ...e, removed: true, updatedAt: Math.max(Date.now(), e.updatedAt + 1) }; persistLibrary(); queueSync(); renderRecent(); toast("Creator removed. Added videos stay in your rotation."); };
       row.appendChild(label); row.appendChild(find); row.appendChild(remove); list.appendChild(row);
     }
   }
-  let importGeneration = 0, importPreview = null;
+  let importGeneration = 0, importPreview = null, importTimer = null;
+  function libraryLink(query) {
+    const value = query.trim();
+    if (!/^(?:https?:\/\/|(?:www\.)?(?:youtube\.com|youtu\.be)\/)/i.test(value)) return null;
+    try { return Library.parseURL(/^https?:\/\//i.test(value) ? value : "https://" + value); }
+    catch (e) { return { error: e.message }; }
+  }
   function clearImport() {
-    ++importGeneration; importPreview = null; $("import-results").innerHTML = ""; $("import-save").hidden = true;
-    $("import-status").textContent = ""; $("import-find").disabled = false;
+    ++importGeneration; clearTimeout(importTimer); importTimer = null; importPreview = null;
+    $("import-panel").hidden = true; $("import-results").innerHTML = ""; $("import-save").hidden = $("import-retry").hidden = true;
+    $("import-status").textContent = "";
+  }
+  function linkCard(v, modes) {
+    const row = document.createElement("button"); row.className = "timeline-entry";
+    const title = document.createElement("div"), detail = document.createElement("div"), body = document.createElement("div"), img = document.createElement("img");
+    title.className = "t"; title.textContent = v[1]; detail.className = "s"; detail.textContent = `${v[2]} · ${v[3]} · ${modeLabel(modes)}${blocked.has(v[0]) ? " · Hidden from rotation" : ""}`;
+    img.alt = ""; img.src = `https://i.ytimg.com/vi/${v[0]}/mqdefault.jpg`; body.appendChild(title); body.appendChild(detail); row.appendChild(img); row.appendChild(body);
+    row.onclick = () => playLibraryVideo(v, modes.includes(libraryTime) ? libraryTime : modes.includes(mode) ? mode : modes[0]);
+    $("import-results").appendChild(row);
+  }
+  function showKnownLink(known) {
+    $("import-panel").hidden = false; $("import-status").textContent = "Already in your library.";
+    $("import-results").innerHTML = ""; $("import-save").hidden = $("import-retry").hidden = true;
+    linkCard(known.v, known.modes);
+  }
+  function searchLibrary(immediate = false) {
+    clearImport(); recentLimit = 80; renderRecent();
+    const parsed = libraryLink($("timeline-search").value || ""); if (!parsed) return;
+    $("import-panel").hidden = false;
+    if (parsed.error) { $("import-status").textContent = parsed.error; return; }
+    const known = parsed.type === "video" && knownVideo(parsed.id);
+    if (known) { showKnownLink(known); return; }
+    $("import-status").textContent = parsed.type === "video" ? "Looking up video…" : "Finding this creator’s routines…";
+    if (immediate) return findImport();
+    importTimer = setTimeout(findImport, 350);
   }
   async function findImport() {
-    clearImport(); const request = importGeneration, target = $("import-mode").value;
+    clearImport(); const request = importGeneration;
+    const parsed = libraryLink($("timeline-search").value || "");
+    if (!parsed || parsed.error) return;
+    const known = parsed.type === "video" && knownVideo(parsed.id);
+    if (known) { showKnownLink(known); return; }
+    $("import-panel").hidden = false;
+    $("import-status").textContent = parsed.type === "video" ? "Looking up video…" : "Finding this creator’s routines…";
     try {
-      const parsed = Library.parseURL($("import-url").value);
-      $("import-find").disabled = true; $("import-status").textContent = "Finding videos…";
       const result = await api("/youtube/resolve", { url: parsed.url });
       if (request !== importGeneration) return;
-      importPreview = { ...result, target, selected: new Set(result.videos.map(v => v.id)) };
+      if (!["video","creator"].includes(result.type) || !Array.isArray(result.videos) || (result.type === "creator" && !result.creator)) throw new Error("Couldn’t read that YouTube link. Try again.");
+      const videos = result.videos.map(v => ({ ...v, mode: ["morning","evening","both"].includes(v.mode) ? v.mode : Library.classify(v) }));
+      importPreview = { ...result, videos, selected: new Set(videos.filter(v => !knownVideo(v.id)).map(v => v.id)) };
+      const alreadyKnown = videos.length - importPreview.selected.size;
       $("import-status").textContent = result.type === "creator"
-        ? `${result.creator.title}: ${result.videos.length} routines found (5–16 minutes). Choose which to add. Save this creator to find more later.`
-        : "Ready to add to your rotation.";
-      if (result.type === "creator" && !result.videos.length) $("import-status").textContent = `${result.creator.title}: no 5–16 minute routines found in these results. You can still save the creator or paste an individual video URL.`;
-      for (const v of result.videos) {
-        const label = document.createElement("label"); label.className = "import-choice";
-        const check = document.createElement("input"); check.type = "checkbox"; check.checked = true;
-        check.onchange = () => check.checked ? importPreview?.selected.add(v.id) : importPreview?.selected.delete(v.id);
-        const name = document.createElement("span"); name.textContent = `${v.title} · ${v.channel} · ${v.length}`;
-        label.appendChild(check); label.appendChild(name); $("import-results").appendChild(label);
+        ? `${result.creator.title} · ${importPreview.selected.size} new ${importPreview.selected.size === 1 ? "routine" : "routines"}${alreadyKnown ? ` · ${alreadyKnown} already in your library` : ""}.`
+        : "Not in your library. Add it?";
+      for (const v of videos.filter(v => result.type !== "creator" || !knownVideo(v.id))) {
+        const exists = knownVideo(v.id), label = document.createElement(result.type === "creator" ? "label" : "div"); label.className = "import-choice";
+        if (result.type === "creator") {
+          const check = document.createElement("input"); check.type = "checkbox"; check.checked = !exists; check.disabled = !!exists;
+          check.onchange = () => check.checked ? importPreview?.selected.add(v.id) : importPreview?.selected.delete(v.id);
+          label.appendChild(check);
+        }
+        const name = document.createElement("span"); name.textContent = `${v.title} · ${v.channel} · ${v.length} · ${exists ? "Already in library" : modeLabel(v.mode === "both" ? ["morning","evening"] : [v.mode])}`;
+        label.appendChild(name); $("import-results").appendChild(label);
       }
-      $("import-save").textContent = result.type === "creator" ? "Save creator and selected videos" : "Add video";
+      if (result.type === "creator" && !videos.length) $("import-status").textContent = `${result.creator.title}: no 5–16 minute routines found. You can save the creator to check again later.`;
+      $("import-save").textContent = result.type === "creator" ? "Save creator & selected videos" : "Add video";
       $("import-save").hidden = false;
-    } catch (error) { if (request === importGeneration) $("import-status").textContent = error.message; }
-    finally { if (request === importGeneration) $("import-find").disabled = false; }
+    } catch (error) { if (request === importGeneration) { $("import-status").textContent = error.message; $("import-retry").hidden = false; } }
   }
   function saveImport() {
     if (!importPreview) return;
-    const modes = importPreview.target === "both" ? ["morning", "evening"] : [importPreview.target];
-    const additions = {}, sources = {}, now = Date.now();
-    for (const m of modes) {
-      for (const v of importPreview.videos.filter(v => importPreview.selected.has(v.id))) additions[`${m}:${v.id}`] = { ...v, mode: m, updatedAt: Math.max(now, (personalVideos[`${m}:${v.id}`]?.updatedAt || 0) + 1), removed: false };
-      if (importPreview.creator) sources[`${m}:${importPreview.creator.id}`] = { ...importPreview.creator, mode: m, updatedAt: Math.max(now, (creators[`${m}:${importPreview.creator.id}`]?.updatedAt || 0) + 1), removed: false };
+    const additions = {}, sources = {}, sourceModes = new Set(), now = Date.now();
+    for (const v of importPreview.videos.filter(v => importPreview.selected.has(v.id))) {
+      const existing = knownVideo(v.id); if (existing) continue;
+      const inferred = ["morning","evening","both"].includes(v.mode) ? v.mode : Library.classify(v);
+      for (const m of inferred === "both" ? ["morning","evening"] : [inferred]) {
+        additions[`${m}:${v.id}`] = { ...v, mode: m, updatedAt: Math.max(now, (personalVideos[`${m}:${v.id}`]?.updatedAt || 0) + 1), removed: false };
+        sourceModes.add(m);
+      }
     }
-    if (!Object.keys(additions).length && !Object.keys(sources).length) { $("import-status").textContent = "Select a video to add."; return; }
+    if (importPreview.creator) {
+      if (!sourceModes.size) for (const m of ["morning","evening"]) sourceModes.add(m);
+      for (const m of sourceModes) sources[`${m}:${importPreview.creator.id}`] = { ...importPreview.creator, mode: m, updatedAt: Math.max(now, (creators[`${m}:${importPreview.creator.id}`]?.updatedAt || 0) + 1), removed: false };
+    }
+    if (!Object.keys(additions).length && !Object.keys(sources).length) { $("import-status").textContent = "Already in your library."; $("import-save").hidden = true; return; }
     if (Object.keys({ ...personalVideos, ...additions }).length > 500 || Object.keys({ ...creators, ...sources }).length > 500) { $("import-status").textContent = "Your library has reached its 500-entry limit."; return; }
     personalVideos = Library.merge(personalVideos, Library.clean(additions)); creators = Library.merge(creators, Library.clean(sources, true));
-    // An explicit addition restores a previously hidden routine to automatic rotation.
     for (const v of Object.values(additions)) if (blocked.has(v.id)) setBlocked(v.id, false);
-    persistLibrary(); queueSync(); clearImport(); $("import-panel").hidden = true; $("library-add").setAttribute("aria-expanded", "false");
-    libraryFilter = "added"; renderRecent(); $("recent-sheet").querySelector(".sheet").scrollTop = 0; toast("Saved to your rotation");
+    persistLibrary(); queueSync(); clearImport(); $("timeline-search").value = "";
+    libraryFilter = "added"; libraryTime = "all"; renderRecent(); $("recent-sheet").querySelector(".sheet").scrollTop = 0; toast("Added to your library");
   }
-  $("library-add").onclick = () => {
-    const panel = $("import-panel"); panel.hidden = !panel.hidden; $("library-add").setAttribute("aria-expanded", String(!panel.hidden));
-    clearImport();
-    if (!panel.hidden) { $("import-mode").value = mode; $("import-url").focus(); }
-  };
-  $("import-form").onsubmit = e => { e.preventDefault(); return findImport(); };
-  $("import-url").oninput = $("import-mode").onchange = clearImport;
+  $("import-retry").onclick = findImport;
   $("import-save").onclick = saveImport;
   function timelineItems(query = "") {
     const q = query.trim().toLocaleLowerCase();
-    return Object.entries(timeline).filter(([, e]) => !q || `${e.title} ${e.channel}`.toLocaleLowerCase().includes(q))
+    return Object.entries(timeline).filter(([, e]) => (libraryTime === "all" || e.mode === libraryTime) && (!q || `${e.title} ${e.channel}`.toLocaleLowerCase().includes(q)))
       .sort((a, b) => b[1].shownAt - a[1].shownAt || a[0].localeCompare(b[0]));
   }
   function renderRecent() {
     const list = $("timeline-list"), q = $("timeline-search").value || "";
-    for (const filter of ["recent", "liked", "added"]) $("filter-" + filter).setAttribute("aria-pressed", String(libraryFilter === filter));
+    $("library-view").value = libraryFilter; $("library-time").value = libraryTime;
+    const isLink = !!libraryLink(q);
+    $("timeline-list").hidden = $("creator-list").hidden = isLink;
+    if (isLink) { $("timeline-note").hidden = true; $("timeline-more").hidden = true; return; }
     renderCreators(q);
     if (libraryFilter !== "recent") { renderLibraryVideos(q); return; }
     const items = timelineItems(q);
     list.innerHTML = "";
-    $("timeline-note").textContent = Object.values(timeline).some(e => e.legacy)
-      ? "Skipped or refreshed videos stay in rotation. Earlier entries may include only a routine’s last saved appearance."
-      : "Shown and Started videos stay in rotation until completed. A thumbs-down keeps a video out.";
+    $("timeline-note").hidden = !Object.values(timeline).some(e => e.legacy);
+    $("timeline-note").textContent = "Older entries reflect the last saved appearance.";
     const completed = new Set(Object.values(time).flatMap(videos => Object.keys(videos)));
     let lastDay = "";
     for (const [key, e] of items.slice(0, recentLimit)) {
@@ -1199,17 +1240,19 @@
     show(v, true, true); scrollTo({ top: 0, behavior: "smooth" });
   }
   function openRecent(filter = "recent") {
-    libraryFilter = filter;
+    libraryFilter = filter; libraryTime = "all"; clearImport();
     recentLimit = 80; $("timeline-search").value = ""; renderRecent();
     $("recent-sheet").classList.add("show"); lockForSheets();
     $("recent-sheet").querySelector(".sheet").scrollTop = 0; $("recent-close").focus();
     if (syncToken) sync();
   }
-  function closeRecent() { $("recent-sheet").classList.remove("show"); lockForSheets(); }
+  function closeRecent() { clearImport(); $("recent-sheet").classList.remove("show"); lockForSheets(); }
   $("recent").onclick = () => openRecent();
-  for (const filter of ["recent", "liked", "added"]) $("filter-" + filter).onclick = () => { libraryFilter = filter; recentLimit = 80; renderRecent(); };
+  $("library-view").onchange = () => { libraryFilter = $("library-view").value; recentLimit = 80; renderRecent(); };
+  $("library-time").onchange = () => { libraryTime = $("library-time").value; recentLimit = 80; renderRecent(); };
   $("recent-close").onclick = $("recent-scrim").onclick = closeRecent;
-  $("timeline-search").oninput = () => { recentLimit = 80; renderRecent(); };
+  $("timeline-search").oninput = () => searchLibrary();
+  $("timeline-search").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); searchLibrary(true); } };
   $("timeline-more").onclick = () => { recentLimit += 80; renderRecent(); };
   $("cal-prev").onclick = () => shiftMonth(-1);
   $("cal-next").onclick = () => shiftMonth(1);

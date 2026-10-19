@@ -38,7 +38,21 @@
     if (path) return { type: 'creator', url: `https://www.youtube.com/${path}` };
     throw new Error('Paste a YouTube video or creator URL.');
   }
-  const api = { clean, merge, pool, parseURL, seconds };
+  function classify(video) {
+    const cues = (value, explicitOnly = false) => {
+      const s = String(value || '').toLowerCase().replace(/https?:\/\/\S+/g, ' ');
+      return { morning: /\b(morning|wake[ -]?up|start (?:your|the) day|rise and shine)\b/.test(s) || (!explicitOnly && /\benergiz(?:e|ing)\b/.test(s)),
+        evening: /\b(evening|bed[ -]?time|wind[ -]?down|before bed|night[ -]?time)\b/.test(s) || (!explicitOnly && /\b(sleep|relaxing|relaxation|unwind)\b/.test(s)) };
+    };
+    let context;
+    for (const value of [video.title, String(video.description || '').slice(0, 500)]) {
+      const explicit = cues(value, true), style = cues(value);
+      context = explicit.morning || explicit.evening ? explicit : style;
+      if (context.morning || context.evening) break;
+    }
+    return context.morning === context.evening ? 'both' : context.morning ? 'morning' : 'evening';
+  }
+  const api = { clean, merge, pool, parseURL, seconds, classify };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Library = api;
 })(typeof window !== 'undefined' ? window : globalThis);
