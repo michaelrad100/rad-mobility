@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="3.3">
+<meta name="version" content="3.4">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -509,6 +509,7 @@
 <script src="videos.js"></script>
 <script src="timeline.js"></script>
 <script src="library.js"></script>
+<script src="rotation.js"></script>
 <script>
   // ---- storage (safe if localStorage is unavailable) ----
   const store = {
@@ -531,6 +532,8 @@
   const catalogVideo = (id, m) => pool(m).find(v => v[0] === id);
   function persistLibrary() { store.set("personalVideos", personalVideos); store.set("creators", creators); }
   let timeline = Timeline.clean(store.get("videoTimeline", {}));
+  let watched = Rotation.watched({ watched: store.get("watched", {}), time, timeline });
+  store.set("watched", watched);
   const timelinePending = new Set(store.get("timelinePending", Object.keys(timeline)).filter(key => timeline[key]));
   let timelineCurrent = null, explicitReplay = false;
   function persistTimeline() {
@@ -651,6 +654,10 @@
   // id: which video, so its length adds to the time total (once per video per day).
   const lengthOf = (id) => { const v = [...pool("morning"), ...pool("evening")].find(x => x[0] === id); const saved = Object.values(timeline).find(e => e.videoId === id && e.length); return v ? secs(v[3]) : saved ? secs(saved.length) : 0; };
   function saveToday(m = videoMode, id = video && video[0]) {
+    if (id) {
+      watched[id] = Math.max(Date.now(), ...Object.values(watched).map(at => at + 1));
+      store.set("watched", watched); queueSync();
+    }
     const k = dayKey(new Date()), s = sessions[k] || [], len = lengthOf(id);
     const newTime = len > 0 && !(time[k] && time[k][id]);
     if (newTime) { time[k] = { ...time[k], [id]: len }; store.set("time", time); }
@@ -706,16 +713,11 @@
     })(start);
   }
 
-  // Unseen first. Other repeats need 60 distinct intervening videos in this pool; favorites need three days.
+  // Shown/started cards stay in circulation. Only completion starts the repeat cooldown.
   function pick(excludeId) {
-    const available = pool(mode).filter(v => !blocked.has(v[0]) && v[0] !== excludeId);
-    const fresh = available.filter(v => !lastShown[v[0]]);
-    const fav = available.filter(v => liked.has(v[0]) && lastShown[v[0]] && Date.now() - lastShown[v[0]] >= 3 * 864e5);
-    const repeats = available.filter(v => lastShown[v[0]] && !liked.has(v[0]) &&
-      pool(mode).filter(other => other[0] !== v[0] && (lastShown[other[0]] || 0) > lastShown[v[0]]).length >= 60);
-    const ordinary = fresh.length ? fresh : repeats;
-    const choices = fav.length && (!ordinary.length || Math.random() < 0.4) ? fav : ordinary;
-    return choices.length ? choices[Math.floor(Math.random() * choices.length)] : null;
+    const videos = pool(mode);
+    const id = Rotation.choose(videos.map(v => v[0]), { shown: lastShown, watched, liked: marks.liked, blocked: marks.blocked }, excludeId);
+    return videos.find(v => v[0] === id) || null;
   }
 
   let selection = 0;
@@ -734,7 +736,7 @@
     try {
       let v;
       if (syncToken) {
-        // The server merges history and reserves this choice atomically, before the card is shown.
+        // The server merges completions and records the offer for variety, without counting it as watched.
         const result = await api("/recommend", { mode, baseIds: VIDEOS[mode].map(v => v[0]), ids: pool(mode).map(v => v[0]), excludeId, data: localData() });
         applySynced(result.data, result.id);
         v = pool(requestedMode).find(v => v[0] === result.id) || null;
@@ -1162,8 +1164,8 @@
     const items = timelineItems(q);
     list.innerHTML = "";
     $("timeline-note").textContent = Object.values(timeline).some(e => e.legacy)
-      ? "Earlier entries may include only a routine’s last saved appearance. Shown includes skipped or refreshed videos."
-      : "Shown includes skipped or refreshed videos. Started means playback began; Finished means completion was recorded.";
+      ? "Skipped or refreshed videos stay in rotation. Earlier entries may include only a routine’s last saved appearance."
+      : "Shown and Started videos stay in rotation until completed. A thumbs-down keeps a video out.";
     const completed = new Set(Object.values(time).flatMap(videos => Object.keys(videos)));
     let lastDay = "";
     for (const [key, e] of items.slice(0, recentLimit)) {
@@ -1299,7 +1301,7 @@
   }
 
   // What this device knows, in the server's shape. Days from before morning/evening was tracked send [].
-  const localData = () => ({ library: personalVideos, creators, timeline: Object.fromEntries([...timelinePending].filter(key => timeline[key]).slice(0, 200).map(key => [key, timeline[key]])), shown: { ...lastShown }, days: Object.fromEntries([...doneDays].map(k => [k, sessions[k] || []])), time, liked: marks.liked, blocked: marks.blocked });
+  const localData = () => ({ watched: { ...watched }, library: personalVideos, creators, timeline: Object.fromEntries([...timelinePending].filter(key => timeline[key]).slice(0, 200).map(key => [key, timeline[key]])), shown: { ...lastShown }, days: Object.fromEntries([...doneDays].map(k => [k, sessions[k] || []])), time, liked: marks.liked, blocked: marks.blocked });
   function applySynced(d, upcomingId) {
     personalVideos = Library.merge(personalVideos, Library.clean(d.library));
     creators = Library.merge(creators, Library.clean(d.creators, true)); persistLibrary();
@@ -1319,6 +1321,7 @@
       const set = key === "liked" ? liked : blocked;   // oldest first, so favorites stay newest-first
       set.clear(); Object.entries(d[key]).filter(([, m]) => m[0]).sort((a, b) => a[1][1] - b[1][1]).forEach(([id]) => set.add(id));
     }
+    watched = Rotation.watched({ watched: Rotation.merge(watched, d.watched), time, timeline }); store.set("watched", watched);
     store.set("doneDays", [...doneDays]); store.set("sessions", sessions); store.set("time", time); store.set("marks", marks);
     store.set("liked", [...liked]); store.set("blocked", [...blocked]);
     renderWeek();
@@ -1474,11 +1477,10 @@
           toast("Tap YouTube's play button to start.");
         },
         onStateChange: (e) => handlePlayerState(e, generation),
-        // 100 = removed, 101/150 = owner disabled embedding. Hide it and move on.
+        // Playback restrictions are not a thumbs-down. Keep external playback and retry available.
         onError: (e) => {
           if (generation !== playerGeneration) return;
-          if ([100, 101, 150].includes(e.data) && video) { setBlocked(video[0], true); next(); }
-          else { ready = false; showPlayerFallback(); }
+          ready = false; showPlayerFallback();
         },
       },
     }); } catch { player = null; showPlayerFallback(); }

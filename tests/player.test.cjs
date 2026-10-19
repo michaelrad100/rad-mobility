@@ -78,6 +78,7 @@ function app({ signedIn = true, seed = {} } = {}) {
   vm.runInContext(fs.readFileSync(path.join(root, 'videos.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(root, 'timeline.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(root, 'library.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(root, 'rotation.js'), 'utf8'), context);
   vm.runInContext(script, context);
   return {
     get, context,
@@ -562,4 +563,31 @@ test('a timed-out import shows an inline retry message and leaves playback avail
  assert.match(a.get('import-status').textContent,/took too long/);
  assert.equal(a.get('import-find').disabled,false); assert.equal(a.get('import-save').hidden,true);
  assert.equal(a.selected(),id); assert.match(a.get('yt').src,new RegExp(id));
+});
+
+test('Next and reload circulate uncompleted cards despite old shown history', () => {
+ const original=app({signedIn:false}), m=vm.runInContext('mode',original.context);
+ const all=Object.values(original.context.VIDEOS).flat().map(v=>v[0]), available=original.context.VIDEOS[m].slice(0,2).map(v=>v[0]);
+ const seed={lastShown:Object.fromEntries(available.map((id,i)=>[id,1000+i])),blocked:all.filter(id=>!available.includes(id))};
+ const a=app({signedIn:false,seed});
+ for(let i=0;i<8;i++){assert.ok(available.includes(a.selected()));a.get('next').onclick();}
+ assert.deepEqual(a.stored('watched'),{}); assert.equal(a.get('card').hidden,false);
+ assert.ok(Object.values(a.stored('videoTimeline')).every(e=>!e.startedAt&&!e.finishedAt));
+ const b=app({signedIn:false,seed:{...seed,lastShown:a.stored('lastShown'),videoTimeline:a.stored('videoTimeline'),watched:a.stored('watched')}});
+ assert.ok(available.includes(b.selected())); assert.deepEqual(b.stored('watched'),{});
+ b.get('down').onclick(); const disliked=b.stored('blocked').find(id=>available.includes(id));
+ for(let i=0;i<4;i++){assert.notEqual(b.selected(),disliked); b.get('next').onclick();}
+});
+
+test('starting a routine does not consume it; reaching completion credit does', () => {
+ const a=app({signedIn:false}),id=a.selected(); a.construct();a.ready();a.state(1);a.tick();
+ assert.deepEqual(a.stored('watched'),{});
+ a.position(480);a.tick(); assert.ok(a.stored('watched')[id]);
+ assert.ok(a.local().watched[id]);
+});
+
+test('embedding restrictions do not silently save a thumbs-down', () => {
+ const a=app({signedIn:false}),id=a.selected();a.construct();a.ready();a.error(101);
+ assert.equal(a.selected(),id);assert.equal(a.stored('blocked')?.includes(id)||false,false);
+ assert.equal(a.get('player-help').hidden,false);assert.deepEqual(a.stored('watched'),{});
 });
