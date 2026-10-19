@@ -8,7 +8,7 @@
       const stamp = n => Number.isFinite(n) && n >= e.shownAt && n <= now ? n : 0;
       out[key] = { videoId: e.videoId, mode: e.mode, shownAt: e.shownAt,
         title: String(e.title || '').slice(0, 220), channel: String(e.channel || '').slice(0, 100),
-        length: /^\d{1,2}:\d{2}$/.test(e.length) ? e.length : '',
+        length: /^\d{1,3}:[0-5]\d$/.test(e.length) ? e.length : '',
         startedAt: stamp(e.startedAt), finishedAt: stamp(e.finishedAt), legacy: e.legacy === true };
     }
     return out;
