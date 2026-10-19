@@ -9,6 +9,7 @@ const picker = html.slice(html.indexOf('  function pick('),html.indexOf('  let s
 function setup(count=61) {
   const ids=Array.from({length:count},(_,i)=>['video'+i]);
   const context=vm.createContext({VIDEOS:{morning:ids,evening:[]},mode:'morning',blocked:new Set(),liked:new Set(),lastShown:{},Math:Object.assign(Object.create(Math),{random:()=>0})});
+  context.pool = m => context.VIDEOS[m];
   vm.runInContext(picker,context);
   return context;
 }

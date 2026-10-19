@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="3.2">
+<meta name="version" content="3.3">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -290,6 +290,20 @@
   body:not(.evening) .toast button { color: #ffc76a; }
   .toast.show { opacity: .95; transform: translate(-50%, 0); }
 
+  .library-filters { display: flex; gap: 6px; margin-bottom: 14px; }
+  .library-filters button { flex: 1; min-height: 44px; padding: 8px 5px; border: 1px solid var(--line); border-radius: 12px; font-size: 13px; }
+  .library-filters button[aria-pressed="true"] { background: var(--sunset); color: var(--accent-fg); border-color: transparent; }
+  .library-add { min-height: 44px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; margin: 4px 0 10px; text-align: left; }
+  #import-panel { padding: 12px; border: 1px solid var(--line); border-radius: 14px; margin-bottom: 12px; }
+  #import-panel label { display: block; font-size: 13px; margin-bottom: 6px; }
+  #import-panel select { min-height: 44px; padding: 8px; max-width: 100%; border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--fg); font: inherit; }
+  .import-choice { display: flex !important; align-items: center; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); line-height: 1.4; }
+  .import-choice input { width: 22px; height: 22px; flex-shrink: 0; }
+  .library-row { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); }
+  .library-row .timeline-entry { flex: 1; min-width: 0; border: 0; }
+  .library-row .thumb { flex-shrink: 0; min-width: 44px; min-height: 44px; }
+  .creator-row { padding: 10px 0; font-size: 14px; border-bottom: 1px solid var(--line); }
+  .creator-row button { min-height: 44px; padding: 8px; text-decoration: underline; }
   /* favorites: everything you've given a thumbs up */
   .actions { display: flex; gap: 10px; flex-shrink: 0; }
   .sheet-wrap { position: fixed; inset: 0; z-index: 20; display: none; }
@@ -352,7 +366,7 @@
       <h1 id="greeting">Good morning</h1>
     </div>
     <div class="actions">
-      <button class="mode" id="favs" aria-label="Your favorites"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg></button>
+      <button class="mode" id="favs" aria-label="Video library — liked videos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.8-4.2 4.1 1 5.8L12 16.8l-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"/></svg></button>
       <button class="mode" id="mode" aria-label="Switch morning / evening"></button>
     </div>
   </header>
@@ -414,23 +428,12 @@
   <button class="next" id="next">Show me another
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
   </button>
-  <button class="recent-button" id="recent">Recently shown</button>
+  <button class="recent-button" id="recent">Your video library</button>
   <label class="pref">Play in the YouTube app <input type="checkbox" class="switch" id="appmode"></label>
   <button class="acct" id="acct" hidden></button>
   <div class="version" id="version"></div>
   <div class="toast" id="toast"></div>
   <div class="pull" id="pull" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v4.5h-4.5"/></svg></div>
-
-  <div class="sheet-wrap" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
-    <div class="scrim" id="scrim"></div>
-    <div class="sheet">
-      <div class="sheet-head">
-        <div><h2 id="sheet-title">Your favorites</h2><p class="sub">Every video you've given a thumbs up. These come around more often.</p></div>
-        <button class="mode" id="sheet-close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-      </div>
-      <div id="fav-list"></div>
-    </div>
-  </div>
 
   <div class="sheet-wrap" id="acct-sheet" role="dialog" aria-modal="true" aria-labelledby="acct-title">
     <div class="scrim" id="acct-scrim"></div>
@@ -474,10 +477,29 @@
     <div class="scrim" id="recent-scrim"></div>
     <div class="sheet">
       <div class="sheet-head">
-        <div><h2 id="recent-title">Recently shown</h2><p class="sub">Every routine shown to you, including ones you skipped or refreshed past. Tap one to bring it back.</p></div>
-        <button class="mode" id="recent-close" aria-label="Close recently shown">✕</button>
+        <div><h2 id="recent-title">Your video library</h2><p class="sub">Revisit a routine, find one you liked, or add your own.</p></div>
+        <button class="mode" id="recent-close" aria-label="Close video library">✕</button>
       </div>
-      <input class="timeline-search" type="search" id="timeline-search" aria-label="Search shown videos" placeholder="Search titles or creators">
+      <div class="library-filters" role="group" aria-label="Filter your video library">
+        <button id="filter-recent" aria-pressed="true">Recently shown</button>
+        <button id="filter-liked" aria-pressed="false">Liked</button>
+        <button id="filter-added" aria-pressed="false">Added by you</button>
+      </div>
+      <input class="timeline-search" type="search" id="timeline-search" aria-label="Search your video library" placeholder="Search titles or creators">
+      <button class="library-add" id="library-add" aria-expanded="false">+ Add a YouTube video or creator</button>
+      <section id="import-panel" hidden aria-label="Add to your rotation">
+        <form id="import-form">
+          <label for="import-url">YouTube video or creator URL</label>
+          <input class="timeline-search" id="import-url" type="url" required placeholder="https://www.youtube.com/…" autocomplete="off">
+          <label for="import-mode">Add to rotation</label>
+          <select id="import-mode"><option value="morning">Morning</option><option value="evening">Evening</option><option value="both">Morning and evening</option></select>
+          <button class="library-add" id="import-find" type="submit">Find videos</button>
+        </form>
+        <p class="note" id="import-status" role="status" aria-live="polite"></p>
+        <div id="import-results"></div>
+        <button class="library-add" id="import-save" hidden>Add selected videos</button>
+      </section>
+      <div id="creator-list"></div>
       <p class="note" id="timeline-note"></p>
       <div id="timeline-list"></div>
       <button class="recent-button" id="timeline-more" hidden>Load earlier videos</button>
@@ -486,6 +508,7 @@
 
 <script src="videos.js"></script>
 <script src="timeline.js"></script>
+<script src="library.js"></script>
 <script>
   // ---- storage (safe if localStorage is unavailable) ----
   const store = {
@@ -502,6 +525,11 @@
     for (const id of Object.keys(videos)) lastShown[id] = Math.max(lastShown[id] || 0, Date.parse(day + "T12:00:00Z"));
   }
   store.set("lastShown", lastShown);
+  let personalVideos = Library.clean(store.get("personalVideos", {}));
+  let creators = Library.clean(store.get("creators", {}), true);
+  const pool = (m = mode) => Library.pool(VIDEOS, personalVideos, m);
+  const catalogVideo = (id, m) => pool(m).find(v => v[0] === id);
+  function persistLibrary() { store.set("personalVideos", personalVideos); store.set("creators", creators); }
   let timeline = Timeline.clean(store.get("videoTimeline", {}));
   const timelinePending = new Set(store.get("timelinePending", Object.keys(timeline)).filter(key => timeline[key]));
   let timelineCurrent = null, explicitReplay = false;
@@ -509,7 +537,7 @@
     store.set("videoTimeline", timeline); store.set("timelinePending", [...timelinePending]);
   }
   function backfillTimeline(excludeId) {
-    const entries = Timeline.backfill(timeline, lastShown, VIDEOS, excludeId);
+    const entries = Timeline.backfill(timeline, lastShown, { morning: pool("morning"), evening: pool("evening") }, excludeId);
     timeline = Timeline.merge(timeline, entries);
     Object.keys(entries).forEach(key => timelinePending.add(key));
     persistTimeline();
@@ -537,6 +565,7 @@
   function setLiked(id, on) {
     on ? liked.add(id) : liked.delete(id); marks.liked[id] = [on ? 1 : 0, Date.now()];
     store.set("liked", [...liked]); store.set("marks", marks); queueSync();
+    if ($("recent-sheet").classList.contains("show")) renderRecent();
   }
   function setBlocked(id, on) {
     on ? blocked.add(id) : blocked.delete(id); marks.blocked[id] = [on ? 1 : 0, Date.now()];
@@ -620,7 +649,7 @@
 
   // m: which routine was finished, so the day's dot can show morning, evening, or both.
   // id: which video, so its length adds to the time total (once per video per day).
-  const lengthOf = (id) => { const v = [...VIDEOS.morning, ...VIDEOS.evening].find(x => x[0] === id); const saved = Object.values(timeline).find(e => e.videoId === id && e.length); return v ? secs(v[3]) : saved ? secs(saved.length) : 0; };
+  const lengthOf = (id) => { const v = [...pool("morning"), ...pool("evening")].find(x => x[0] === id); const saved = Object.values(timeline).find(e => e.videoId === id && e.length); return v ? secs(v[3]) : saved ? secs(saved.length) : 0; };
   function saveToday(m = videoMode, id = video && video[0]) {
     const k = dayKey(new Date()), s = sessions[k] || [], len = lengthOf(id);
     const newTime = len > 0 && !(time[k] && time[k][id]);
@@ -679,11 +708,11 @@
 
   // Unseen first. Other repeats need 60 distinct intervening videos in this pool; favorites need three days.
   function pick(excludeId) {
-    const pool = VIDEOS[mode].filter(v => !blocked.has(v[0]) && v[0] !== excludeId);
-    const fresh = pool.filter(v => !lastShown[v[0]]);
-    const fav = pool.filter(v => liked.has(v[0]) && lastShown[v[0]] && Date.now() - lastShown[v[0]] >= 3 * 864e5);
-    const repeats = pool.filter(v => lastShown[v[0]] && !liked.has(v[0]) &&
-      VIDEOS[mode].filter(other => other[0] !== v[0] && (lastShown[other[0]] || 0) > lastShown[v[0]]).length >= 60);
+    const available = pool(mode).filter(v => !blocked.has(v[0]) && v[0] !== excludeId);
+    const fresh = available.filter(v => !lastShown[v[0]]);
+    const fav = available.filter(v => liked.has(v[0]) && lastShown[v[0]] && Date.now() - lastShown[v[0]] >= 3 * 864e5);
+    const repeats = available.filter(v => lastShown[v[0]] && !liked.has(v[0]) &&
+      pool(mode).filter(other => other[0] !== v[0] && (lastShown[other[0]] || 0) > lastShown[v[0]]).length >= 60);
     const ordinary = fresh.length ? fresh : repeats;
     const choices = fav.length && (!ordinary.length || Math.random() < 0.4) ? fav : ordinary;
     return choices.length ? choices[Math.floor(Math.random() * choices.length)] : null;
@@ -706,9 +735,9 @@
       let v;
       if (syncToken) {
         // The server merges history and reserves this choice atomically, before the card is shown.
-        const result = await api("/recommend", { mode, ids: VIDEOS[mode].map(v => v[0]), excludeId, data: localData() });
+        const result = await api("/recommend", { mode, baseIds: VIDEOS[mode].map(v => v[0]), ids: pool(mode).map(v => v[0]), excludeId, data: localData() });
         applySynced(result.data, result.id);
-        v = VIDEOS[requestedMode].find(v => v[0] === result.id) || null;
+        v = pool(requestedMode).find(v => v[0] === result.id) || null;
       } else v = pick(excludeId);
       if (request === selection && requestedMode === mode) show(v, true);
     } catch {
@@ -735,9 +764,9 @@
       if (ready) player.stopVideo();
       setBig(false);
       $("channel").textContent = "";
-      const allBlocked = VIDEOS[mode].every(x => blocked.has(x[0]));
+      const allBlocked = pool(mode).every(x => blocked.has(x[0]));
       $("title").textContent = allBlocked ? "You've thumbed-down everything here." : "You're all caught up on fresh routines.";
-      if (allBlocked) toast("Bring them all back?", () => { VIDEOS[mode].forEach(x => blocked.has(x[0]) && setBlocked(x[0], false)); next(); }, "Restore");
+      if (allBlocked) toast("Bring them all back?", () => { pool(mode).forEach(x => blocked.has(x[0]) && setBlocked(x[0], false)); next(); }, "Restore");
       else toast("Try the other routine, or choose one of your favorites.");
       return;
     }
@@ -906,50 +935,12 @@
   };
   $("mode").onclick = () => { mode = mode === "evening" ? "morning" : "evening"; applyMode(); selectVideo(); };
 
-  // ---- favorites sheet: every thumbs-up video, newest first ----
+  // Both library entry points share one dialog and search.
   const UP_ICON = $("up").innerHTML;
-  function renderFavs() {
-    const list = $("fav-list"); list.innerHTML = "";
-    const items = [...liked].reverse().map(id => {
-      const m = VIDEOS[mode].some(x => x[0] === id) ? mode : ["morning", "evening"].find(k => VIDEOS[k].some(x => x[0] === id));
-      return m && !blocked.has(id) ? { v: VIDEOS[m].find(x => x[0] === id), m } : null;
-    }).filter(Boolean);
-    if (!items.length) {
-      list.innerHTML = '<div class="fav-empty">Nothing here yet. Tap the thumbs up on a video you love and it\'ll be saved here.</div>';
-      return;
-    }
-    for (const { v, m } of items) {
-      const row = document.createElement("div"); row.className = "fav";
-      row.innerHTML = `<button class="go"><img alt="" loading="lazy"><div><div class="t"></div><div class="s"></div></div></button><button class="thumb on" aria-label="Remove thumbs up">${UP_ICON}</button>`;
-      row.querySelector("img").src = `https://i.ytimg.com/vi/${v[0]}/mqdefault.jpg`;
-      row.querySelector(".t").textContent = v[1];
-      row.querySelector(".s").textContent = `${v[2]} · ${v[3]} · ${m === "evening" ? "Evening" : "Morning"}`;
-      row.querySelector(".go").onclick = () => {
-        closeFavs(); ++selection; $("next").disabled = false;
-        if (m !== mode) { mode = m; applyMode(); }
-        show(v, true); scrollTo({ top: 0, behavior: "smooth" });
-      };
-      // Un-thumbing leaves the row in place (dimmed) so a mis-tap is easy to undo.
-      const t = row.querySelector(".thumb");
-      t.onclick = () => {
-        setLiked(v[0], !liked.has(v[0]));
-        t.classList.toggle("on", liked.has(v[0])); row.classList.toggle("off", !liked.has(v[0]));
-        if (video && video[0] === v[0]) $("up").classList.toggle("on", liked.has(v[0]));
-      };
-      list.appendChild(row);
-    }
-  }
-  function openFavs() {
-    renderFavs();
-    $("sheet").classList.add("show"); lockForSheets();
-    $("sheet").querySelector(".sheet").scrollTop = 0; $("sheet-close").focus();
-  }
-  function closeFavs() { $("sheet").classList.remove("show"); lockForSheets(); }
+  function openFavs() { openRecent("liked"); }
   const lockForSheets = () => document.body.classList.toggle("sheet-open", !!document.querySelector(".sheet-wrap.show"));
   $("favs").onclick = openFavs;
-  $("sheet-close").onclick = $("scrim").onclick = closeFavs;
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeFavs(); closeAcct(); closeHist(); closeRecent(); } });
-
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeAcct(); closeHist(); closeRecent(); } });
 
   // ---- history: a month at a time, each finished day filled in morning / evening / both ----
   let calMonth = null;   // first of the month being shown
@@ -1041,14 +1032,134 @@
   $("totals").onclick = openHist;
   $("hist-close").onclick = $("hist-scrim").onclick = closeHist;
   // ---- every shown card: replaying is an explicit choice, independent of rotation ----
-  let recentLimit = 80;
+  let recentLimit = 80, libraryFilter = "recent";
+  function playLibraryVideo(v, m) {
+    closeRecent(); ++selection; $("next").disabled = false;
+    if (mode !== m) { mode = m; applyMode(); }
+    show(v, true, true); scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function libraryItems(query = "") {
+    const q = query.trim().toLocaleLowerCase();
+    const items = libraryFilter === "added"
+      ? Object.values(personalVideos).filter(e => !e.removed).sort((a, b) => b.updatedAt - a.updatedAt).map(e => ({ v: [e.id, e.title, e.channel, e.length], m: e.mode }))
+      : [...liked].reverse().map(id => {
+        const m = catalogVideo(id, mode) ? mode : ["morning", "evening"].find(m => catalogVideo(id, m));
+        const saved = Object.values(timeline).find(e => e.videoId === id);
+        return m ? { v: catalogVideo(id, m), m } : saved ? { v: [id, saved.title, saved.channel, saved.length], m: saved.mode } : null;
+      }).filter(Boolean);
+    return items.filter(({v}) => !q || `${v[1]} ${v[2]}`.toLocaleLowerCase().includes(q));
+  }
+  function renderLibraryVideos(query) {
+    const list = $("timeline-list"), items = libraryItems(query); list.innerHTML = "";
+    $("timeline-note").textContent = libraryFilter === "liked" ? "Your thumbs-up videos, newest likes first. These come around more often."
+      : "Your additions join the selected rotation. Removing an addition keeps its viewing history; videos in the standard catalog remain available.";
+    for (const { v, m } of items.slice(0, recentLimit)) {
+      const row = document.createElement("div"); row.className = "library-row";
+      const go = document.createElement("button"); go.className = "timeline-entry";
+      const img = document.createElement("img"); img.src = `https://i.ytimg.com/vi/${v[0]}/mqdefault.jpg`; img.alt = ""; img.loading = "lazy";
+      const body = document.createElement("div"), title = document.createElement("div"), detail = document.createElement("div");
+      title.className = "t"; title.textContent = v[1]; detail.className = "s";
+      detail.textContent = `${v[2]} · ${v[3]} · ${m === "morning" ? "Morning" : "Evening"}${blocked.has(v[0]) ? " · Hidden from automatic rotation" : ""}`;
+      body.appendChild(title); body.appendChild(detail); go.appendChild(img); go.appendChild(body);
+      go.onclick = () => playLibraryVideo(v, m);
+      const action = document.createElement("button"); action.className = "thumb";
+      if (libraryFilter === "liked") {
+        action.innerHTML = UP_ICON; action.classList.add("on"); action.setAttribute("aria-label", `Unlike ${v[1]}`);
+        action.onclick = () => { setLiked(v[0], false); if (video?.[0] === v[0]) $("up").classList.remove("on"); toast("Removed from liked videos", () => { setLiked(v[0], true); if (video?.[0] === v[0]) $("up").classList.add("on"); }, "Undo"); };
+      } else {
+        action.textContent = "✕"; action.setAttribute("aria-label", `Remove addition: ${v[1]} (${m})`);
+        action.onclick = () => {
+          const key = `${m}:${v[0]}`; personalVideos[key] = { ...personalVideos[key], removed: true, updatedAt: Math.max(Date.now(), personalVideos[key].updatedAt + 1) };
+          persistLibrary(); queueSync(); renderRecent();
+          toast("Removed from your additions", () => { personalVideos[key] = { ...personalVideos[key], removed: false, updatedAt: Math.max(Date.now(), personalVideos[key].updatedAt + 1) }; persistLibrary(); queueSync(); renderRecent(); }, "Undo");
+        };
+      }
+      row.appendChild(go); row.appendChild(action); list.appendChild(row);
+    }
+    if (!items.length) { const empty = document.createElement("p"); empty.className = "fav-empty"; empty.textContent = query ? "No matching videos." : libraryFilter === "liked" ? "Tap the thumbs up on a routine to save it here." : "Add a YouTube video or creator above to build your rotation."; list.appendChild(empty); }
+    $("timeline-more").hidden = items.length <= recentLimit;
+  }
+  function renderCreators(query) {
+    const list = $("creator-list"); list.innerHTML = "";
+    if (libraryFilter !== "added") return;
+    for (const creator of Object.values(creators).filter(e => !e.removed && e.title.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) {
+      const row = document.createElement("div"); row.className = "creator-row";
+      const label = document.createElement("div"); label.textContent = `${creator.title} · ${creator.mode === "morning" ? "Morning" : "Evening"}`;
+      const find = document.createElement("button"); find.textContent = "Find more routines";
+      find.onclick = () => {
+        $("import-panel").hidden = false; $("library-add").setAttribute("aria-expanded", "true");
+        $("import-url").value = `https://www.youtube.com/channel/${creator.id}`; $("import-mode").value = creator.mode;
+        findImport();
+      };
+      const remove = document.createElement("button"); remove.textContent = "Remove creator";
+      remove.onclick = () => { const key = `${creator.mode}:${creator.id}`; creators[key] = { ...creator, removed: true, updatedAt: Math.max(Date.now(), creator.updatedAt + 1) }; persistLibrary(); queueSync(); renderRecent(); toast("Creator removed. Added videos stay in your rotation."); };
+      row.appendChild(label); row.appendChild(find); row.appendChild(remove); list.appendChild(row);
+    }
+  }
+  let importGeneration = 0, importPreview = null;
+  function clearImport() {
+    ++importGeneration; importPreview = null; $("import-results").innerHTML = ""; $("import-save").hidden = true;
+    $("import-status").textContent = ""; $("import-find").disabled = false;
+  }
+  async function findImport() {
+    clearImport(); const request = importGeneration, target = $("import-mode").value;
+    try {
+      const parsed = Library.parseURL($("import-url").value);
+      $("import-find").disabled = true; $("import-status").textContent = "Finding videos…";
+      const result = await api("/youtube/resolve", { url: parsed.url });
+      if (request !== importGeneration) return;
+      importPreview = { ...result, target, selected: new Set(result.videos.map(v => v.id)) };
+      $("import-status").textContent = result.type === "creator"
+        ? `${result.creator.title}: ${result.videos.length} routines found (5–16 minutes). Choose which to add. Save this creator to find more later.`
+        : "Ready to add to your rotation.";
+      if (result.type === "creator" && !result.videos.length) $("import-status").textContent = `${result.creator.title}: no 5–16 minute routines found in these results. You can still save the creator or paste an individual video URL.`;
+      for (const v of result.videos) {
+        const label = document.createElement("label"); label.className = "import-choice";
+        const check = document.createElement("input"); check.type = "checkbox"; check.checked = true;
+        check.onchange = () => check.checked ? importPreview?.selected.add(v.id) : importPreview?.selected.delete(v.id);
+        const name = document.createElement("span"); name.textContent = `${v.title} · ${v.channel} · ${v.length}`;
+        label.appendChild(check); label.appendChild(name); $("import-results").appendChild(label);
+      }
+      $("import-save").textContent = result.type === "creator" ? "Save creator and selected videos" : "Add video";
+      $("import-save").hidden = false;
+    } catch (error) { if (request === importGeneration) $("import-status").textContent = error.message; }
+    finally { if (request === importGeneration) $("import-find").disabled = false; }
+  }
+  function saveImport() {
+    if (!importPreview) return;
+    const modes = importPreview.target === "both" ? ["morning", "evening"] : [importPreview.target];
+    const additions = {}, sources = {}, now = Date.now();
+    for (const m of modes) {
+      for (const v of importPreview.videos.filter(v => importPreview.selected.has(v.id))) additions[`${m}:${v.id}`] = { ...v, mode: m, updatedAt: Math.max(now, (personalVideos[`${m}:${v.id}`]?.updatedAt || 0) + 1), removed: false };
+      if (importPreview.creator) sources[`${m}:${importPreview.creator.id}`] = { ...importPreview.creator, mode: m, updatedAt: Math.max(now, (creators[`${m}:${importPreview.creator.id}`]?.updatedAt || 0) + 1), removed: false };
+    }
+    if (!Object.keys(additions).length && !Object.keys(sources).length) { $("import-status").textContent = "Select a video to add."; return; }
+    if (Object.keys({ ...personalVideos, ...additions }).length > 500 || Object.keys({ ...creators, ...sources }).length > 500) { $("import-status").textContent = "Your library has reached its 500-entry limit."; return; }
+    personalVideos = Library.merge(personalVideos, Library.clean(additions)); creators = Library.merge(creators, Library.clean(sources, true));
+    // An explicit addition restores a previously hidden routine to automatic rotation.
+    for (const v of Object.values(additions)) if (blocked.has(v.id)) setBlocked(v.id, false);
+    persistLibrary(); queueSync(); clearImport(); $("import-panel").hidden = true; $("library-add").setAttribute("aria-expanded", "false");
+    libraryFilter = "added"; renderRecent(); $("recent-sheet").querySelector(".sheet").scrollTop = 0; toast("Saved to your rotation");
+  }
+  $("library-add").onclick = () => {
+    const panel = $("import-panel"); panel.hidden = !panel.hidden; $("library-add").setAttribute("aria-expanded", String(!panel.hidden));
+    clearImport();
+    if (!panel.hidden) { $("import-mode").value = mode; $("import-url").focus(); }
+  };
+  $("import-form").onsubmit = e => { e.preventDefault(); return findImport(); };
+  $("import-url").oninput = $("import-mode").onchange = clearImport;
+  $("import-save").onclick = saveImport;
   function timelineItems(query = "") {
     const q = query.trim().toLocaleLowerCase();
     return Object.entries(timeline).filter(([, e]) => !q || `${e.title} ${e.channel}`.toLocaleLowerCase().includes(q))
       .sort((a, b) => b[1].shownAt - a[1].shownAt || a[0].localeCompare(b[0]));
   }
   function renderRecent() {
-    const list = $("timeline-list"), items = timelineItems($("timeline-search").value);
+    const list = $("timeline-list"), q = $("timeline-search").value || "";
+    for (const filter of ["recent", "liked", "added"]) $("filter-" + filter).setAttribute("aria-pressed", String(libraryFilter === filter));
+    renderCreators(q);
+    if (libraryFilter !== "recent") { renderLibraryVideos(q); return; }
+    const items = timelineItems(q);
     list.innerHTML = "";
     $("timeline-note").textContent = Object.values(timeline).some(e => e.legacy)
       ? "Earlier entries may include only a routine’s last saved appearance. Shown includes skipped or refreshed videos."
@@ -1080,19 +1191,21 @@
   }
   function replayTimeline(key) {
     const e = timeline[key]; if (!e) return;
-    const v = VIDEOS[e.mode].find(v => v[0] === e.videoId) || [e.videoId, e.title, e.channel, e.length];
+    const v = catalogVideo(e.videoId, e.mode) || [e.videoId, e.title, e.channel, e.length];
     closeRecent(); ++selection; $("next").disabled = false;
     if (mode !== e.mode) { mode = e.mode; applyMode(); }
     show(v, true, true); scrollTo({ top: 0, behavior: "smooth" });
   }
-  function openRecent() {
+  function openRecent(filter = "recent") {
+    libraryFilter = filter;
     recentLimit = 80; $("timeline-search").value = ""; renderRecent();
     $("recent-sheet").classList.add("show"); lockForSheets();
     $("recent-sheet").querySelector(".sheet").scrollTop = 0; $("recent-close").focus();
     if (syncToken) sync();
   }
   function closeRecent() { $("recent-sheet").classList.remove("show"); lockForSheets(); }
-  $("recent").onclick = openRecent;
+  $("recent").onclick = () => openRecent();
+  for (const filter of ["recent", "liked", "added"]) $("filter-" + filter).onclick = () => { libraryFilter = filter; recentLimit = 80; renderRecent(); };
   $("recent-close").onclick = $("recent-scrim").onclick = closeRecent;
   $("timeline-search").oninput = () => { recentLimit = 80; renderRecent(); };
   $("timeline-more").onclick = () => { recentLimit += 80; renderRecent(); };
@@ -1168,17 +1281,28 @@
   let syncToken = store.get("syncToken", null), syncTimer = null;
 
   async function api(path, body, keepalive) {
-    const r = await fetch(SYNC + path, { method: "POST", keepalive, body: JSON.stringify(body || {}),
-      headers: { "Content-Type": "application/json", ...(syncToken ? { Authorization: `Bearer ${syncToken}` } : {}) } });
-    const j = await r.json().catch(() => ({}));
-    if (r.status === 401 && syncToken) { syncToken = null; store.set("syncToken", null); paintAcct(); }
-    if (!r.ok) throw new Error(j.error || "Couldn't reach the server. Try again in a moment.");
-    return j;
+    const lookup = path === "/youtube/resolve";
+    const endpoint = lookup ? (SYNC || "https://rad-mobility-sync-production.up.railway.app") : SYNC;
+    const controller = lookup ? new AbortController() : null;
+    const timeout = controller && setTimeout(() => controller.abort(), 20000);
+    try {
+      const r = await fetch(endpoint + path, { method: "POST", keepalive, signal: controller?.signal, body: JSON.stringify(body || {}),
+        headers: { "Content-Type": "application/json", ...(syncToken ? { Authorization: `Bearer ${syncToken}` } : {}) } });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 401 && syncToken) { syncToken = null; store.set("syncToken", null); paintAcct(); }
+      if (!r.ok) throw new Error(j.error || "Couldn't reach the server. Try again in a moment.");
+      return j;
+    } catch (e) {
+      if (controller?.signal.aborted) throw new Error("YouTube lookup took too long. Try again in a moment.");
+      throw e;
+    } finally { if (timeout) clearTimeout(timeout); }
   }
 
   // What this device knows, in the server's shape. Days from before morning/evening was tracked send [].
-  const localData = () => ({ timeline: Object.fromEntries([...timelinePending].filter(key => timeline[key]).slice(0, 200).map(key => [key, timeline[key]])), shown: { ...lastShown }, days: Object.fromEntries([...doneDays].map(k => [k, sessions[k] || []])), time, liked: marks.liked, blocked: marks.blocked });
+  const localData = () => ({ library: personalVideos, creators, timeline: Object.fromEntries([...timelinePending].filter(key => timeline[key]).slice(0, 200).map(key => [key, timeline[key]])), shown: { ...lastShown }, days: Object.fromEntries([...doneDays].map(k => [k, sessions[k] || []])), time, liked: marks.liked, blocked: marks.blocked });
   function applySynced(d, upcomingId) {
+    personalVideos = Library.merge(personalVideos, Library.clean(d.library));
+    creators = Library.merge(creators, Library.clean(d.creators, true)); persistLibrary();
     const incoming = Timeline.clean(d.timeline);
     timeline = Timeline.merge(timeline, incoming);
     for (const [key, entry] of Object.entries(incoming)) if (JSON.stringify(timeline[key]) === JSON.stringify(entry)) timelinePending.delete(key);
@@ -1258,8 +1382,8 @@
   function openAcct() {
     const on = !!syncToken;
     $("acct-title").textContent = on ? "You're signed in" : "Keep your history";
-    $("acct-sub").textContent = on ? "Your shown videos, finished days, favorites and thumbs-downs are saved, and follow you to any device where you sign in with your passkey."
-      : "Sign in with Face ID. No password or email. Your shown videos, finished days, favorites and thumbs-downs follow you to any device, even if you delete the app.";
+    $("acct-sub").textContent = on ? "Your added videos, creators, shown videos, finished days, favorites and thumbs-downs are saved, and follow you to any device where you sign in with your passkey."
+      : "Sign in with Face ID. No password or email. Your added videos, creators, shown videos, finished days, favorites and thumbs-downs follow you to any device, even if you delete the app.";
     $("acct-out").hidden = on; $("acct-in").hidden = !on; $("acct-msg").textContent = "";
     if (!on) prefetch();
     $("acct-sheet").classList.add("show"); lockForSheets();

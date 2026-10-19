@@ -77,6 +77,7 @@ function app({ signedIn = true, seed = {} } = {}) {
   context.window = context;
   vm.runInContext(fs.readFileSync(path.join(root, 'videos.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(root, 'timeline.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(root, 'library.js'), 'utf8'), context);
   vm.runInContext(script, context);
   return {
     get, context,
@@ -479,4 +480,61 @@ test('explicit timeline replay can recover a thumbed-down card without changing 
   assert.deepEqual(a.stored('time'), {});
   a.get('next').onclick();
   assert.notEqual(a.selected(), first);
+});
+
+test('one searchable library contains liked videos and personal additions', () => {
+  const a = app({ signedIn: false });
+  const id = a.selected(); a.context.setLiked(id, true);
+  a.get('favs').onclick();
+  assert.equal(a.get('recent-sheet').classList.contains('show'), true);
+  assert.equal(a.context.libraryItems().length, 1);
+  assert.equal(a.context.libraryItems('this title does not exist').length, 0);
+  a.get('filter-recent').onclick();
+  assert.ok(a.context.timelineItems().some(([,e]) => e.videoId === id));
+  assert.equal(a.get('recent-sheet').classList.contains('show'), true);
+});
+
+test('adding a video to both rotations persists without changing playback, likes or credit', () => {
+  const a = app({ signedIn: false }), original = a.selected();
+  a.context.importFixture = { type: 'video', target: 'both', videos: [{ id: 'newVid12345', title: 'My routine', channel: 'My creator', length: '20:00' }], selected: new Set(['newVid12345']) };
+  vm.runInContext('importPreview = importFixture; saveImport();', a.context);
+  assert.equal(Object.keys(a.stored('personalVideos')).length, 2);
+  assert.equal(a.selected(), original);
+  assert.equal(a.stored('time'), null); assert.equal(a.stored('liked'), null);
+  assert.ok(vm.runInContext('pool("morning").some(v => v[0] === "newVid12345")', a.context));
+  assert.ok(vm.runInContext('pool("evening").some(v => v[0] === "newVid12345")', a.context));
+  const b = app({ signedIn: false, seed: {personalVideos: a.stored('personalVideos')} });
+  b.get('filter-added').onclick();
+  assert.equal(b.context.libraryItems('My creator').length, 2);
+});
+
+test('signed-in personal metadata joins recommendation requests and stale sync cannot undo removal', async () => {
+  const v = {id:'newVid12345',mode:'morning',title:'Personal routine',channel:'Creator',length:'20:00',updatedAt:1000,removed:false};
+  const a=app({seed:{personalVideos:{'morning:newVid12345':v}}});
+  assert.ok(a.requests[0].body.ids.includes(v.id));
+  assert.equal(a.requests[0].body.data.library['morning:newVid12345'].title, v.title);
+  await a.recommend();
+  const d={days:{},time:{},liked:{},blocked:{},library:{'morning:newVid12345':{...v,removed:true,updatedAt:2000}}};
+  a.context.applySynced(d); a.context.applySynced({...d,library:{'morning:newVid12345':v}});
+  assert.equal(a.stored('personalVideos')['morning:newVid12345'].removed,true);
+  assert.equal(vm.runInContext('pool("morning").some(v => v[0] === "newVid12345")',a.context),false);
+});
+
+test('creator selection imports only chosen videos and saves a reusable creator source', () => {
+  const a=app({signedIn:false});
+  a.context.importFixture={type:'creator',target:'evening',creator:{id:'UCU0DZhN-8KFLYO6beSaYljg',title:'Tom Merrick'},videos:[{id:'newVid12345',title:'Selected routine',channel:'Creator',length:'12:00'},{id:'otherVid123',title:'Unselected routine',channel:'Creator',length:'10:00'}],selected:new Set(['newVid12345'])};
+  vm.runInContext('importPreview=importFixture; saveImport()',a.context);
+  assert.deepEqual(Object.keys(a.stored('personalVideos')),['evening:newVid12345']);
+  assert.equal(a.stored('creators')['evening:UCU0DZhN-8KFLYO6beSaYljg'].title,'Tom Merrick');
+});
+
+test('an added routine still receives its full completion time through Finish routine', () => {
+  const v={id:'newVid12345',mode:'morning',title:'Personal routine',channel:'Creator',length:'20:00',updatedAt:1000,removed:false};
+  const a=app({signedIn:false,seed:{personalVideos:{['morning:'+v.id]:v}}});
+  a.context.playLibraryVideo([v.id,v.title,v.channel,v.length],'morning');
+  a.construct(); a.duration(1200); a.ready(); a.state(1); a.tick();
+  a.get('timeline').value=1180; a.get('timeline').oninput();
+  assert.equal(a.get('finish-routine').hidden,false); a.get('finish-routine').onclick();
+  const [day]=a.stored('doneDays'); assert.equal(a.stored('time')[day][v.id],1200);
+  assert.ok(Object.values(a.stored('videoTimeline')).some(e=>e.videoId===v.id && e.finishedAt));
 });
