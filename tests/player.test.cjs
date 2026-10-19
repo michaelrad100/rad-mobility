@@ -10,7 +10,7 @@ const script = html.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
 
 // Run the actual app with controlled recommendation and YouTube readiness events.
 // No account credentials, network calls, or browser storage are used.
-function app({ signedIn = true } = {}) {
+function app({ signedIn = true, seed = {} } = {}) {
   const element = () => {
     const classes = new Set();
     return {
@@ -22,6 +22,7 @@ function app({ signedIn = true } = {}) {
       },
       style: {}, content: '2.4', textContent: '', hidden: false,
       setAttribute() {}, appendChild() {}, addEventListener() {},
+      focus() {}, querySelector: () => element(),
       replaceWith(node) { elements.set(this.id, node); },
       prepend(node) { elements.set(node.id, node); },
     };
@@ -35,6 +36,7 @@ function app({ signedIn = true } = {}) {
   const requests = [];
   const instances = [], cues = [], timers = new Map(); let nextTimer = 0;
   const data = new Map(signedIn ? [['syncToken', JSON.stringify('test-only')]] : []);
+  for (const [key, value] of Object.entries(seed)) data.set(key, JSON.stringify(value));
   let options, loadedId, player, playCalls = 0, pauseCalls = 0;
   let position = 20, duration = 600, state = -1, interval;
   const seeks = [];
@@ -46,7 +48,7 @@ function app({ signedIn = true } = {}) {
     location: { hostname: 'localhost', pathname: '/', origin: 'http://localhost' }, navigator: {},
     matchMedia: () => ({ matches: true }),
     localStorage: { getItem: k => data.get(k) ?? null, setItem: (k, v) => data.set(k, v) },
-    addEventListener() {},
+    addEventListener() {}, scrollTo() {},
     setTimeout(fn, ms) { const id = ++nextTimer; timers.set(id, { fn, ms }); return id; },
     clearTimeout(id) { timers.delete(id); },
     setInterval(fn) { interval = fn; return 1; }, clearInterval() { interval = null; },
@@ -74,6 +76,7 @@ function app({ signedIn = true } = {}) {
   });
   context.window = context;
   vm.runInContext(fs.readFileSync(path.join(root, 'videos.js'), 'utf8'), context);
+  vm.runInContext(fs.readFileSync(path.join(root, 'timeline.js'), 'utf8'), context);
   vm.runInContext(script, context);
   return {
     get, context,
@@ -94,6 +97,7 @@ function app({ signedIn = true } = {}) {
       for (const [id, timer] of [...timers]) if (timer.ms === ms) { timers.delete(id); timer.fn(); }
     },
     stored: key => JSON.parse(data.get(key) || 'null'),
+    local: () => vm.runInContext('localData()', context),
     position: at => { position = at; },
     duration: seconds => { duration = seconds; },
     state(value) { state = value; options.events.onStateChange({ data: value }); },
@@ -407,4 +411,72 @@ test('late API attachment preserves native playback and starts progress tracking
   assert.equal(a.monitoring(), true);
   assert.equal(a.get('card').classList.contains('playing'), true);
   assert.equal(a.get('card').classList.contains('hushed'), false);
+});
+
+test('every shown card persists across Next and reload, and can be replayed without credit', () => {
+  const a = app({ signedIn: false }), first = a.selected();
+  a.get('next').onclick();
+  assert.equal(Object.keys(a.stored('videoTimeline')).length, 2);
+  const b = app({ signedIn: false, seed: { videoTimeline: a.stored('videoTimeline'), lastShown: a.stored('lastShown') } });
+  const entries = b.stored('videoTimeline');
+  assert.equal(Object.keys(entries).length, 3);
+  const key = Object.keys(entries).find(key => entries[key].videoId === first);
+  b.context.replayTimeline(key);
+  assert.equal(b.selected(), first);
+  assert.equal(Object.keys(b.stored('videoTimeline')).length, 4);
+  assert.equal(b.stored('time'), null);
+  assert.equal(b.stored('liked'), null);
+  assert.equal(b.context.timelineItems(entries[key].channel).length > 0, true);
+});
+
+test('timeline distinguishes shown, started and finished appearances', () => {
+  const a = app({ signedIn: false });
+  const key = Object.keys(a.stored('videoTimeline'))[0];
+  assert.equal(a.stored('videoTimeline')[key].startedAt, 0);
+  a.construct(); a.ready(); a.state(1); a.tick();
+  assert.ok(a.stored('videoTimeline')[key].startedAt);
+  a.get('timeline').value = 580; a.get('timeline').oninput();
+  a.get('finish-routine').onclick();
+  assert.ok(a.stored('videoTimeline')[key].finishedAt);
+});
+
+test('old shown history is recovered as legacy entries, with one new entry for the current card', () => {
+  const a = app({ signedIn: false, seed: { lastShown: { cacwri2wio4: 100000 } } });
+  const entries = Object.values(a.stored('videoTimeline'));
+  assert.equal(entries.filter(e => e.legacy).length, 1);
+  assert.equal(entries.find(e => e.legacy).videoId, 'cacwri2wio4');
+  assert.equal(entries.find(e => e.legacy).finishedAt, 0);
+});
+
+test('timeline batches drain without trimming older entries, and stale sync cannot erase a start', () => {
+  const entries = Object.fromEntries(Array.from({ length: 300 }, (_, i) => ['event-batch-' + i, {
+    videoId: 'cacwri2wio4', mode: 'morning', shownAt: 1000 + i,
+    title: 'Routine', channel: 'Creator', length: '6:51', startedAt: 0, finishedAt: 0, legacy: false,
+  }]));
+  const a = app({ signedIn: false, seed: { videoTimeline: entries } });
+  const batch = a.local().timeline;
+  assert.equal(Object.keys(batch).length, 200);
+  const emptyData = { days: {}, time: {}, shown: {}, liked: {}, blocked: {} };
+  a.context.applySynced({ ...emptyData, timeline: batch });
+  assert.equal(a.stored('timelinePending').length, 101);
+  assert.equal(Object.keys(a.stored('videoTimeline')).length, 301);
+  a.construct(); a.ready(); a.state(1); a.tick();
+  const latestKey = a.stored('timelinePending').at(-1), latest = a.stored('videoTimeline')[latestKey];
+  assert.ok(latest.startedAt);
+  a.context.applySynced({ ...emptyData, timeline: { [latestKey]: { ...latest, startedAt: 0 } } });
+  assert.ok(a.stored('videoTimeline')[latestKey].startedAt);
+  assert.ok(a.stored('timelinePending').includes(latestKey));
+});
+
+test('explicit timeline replay can recover a thumbed-down card without changing automatic exclusions', () => {
+  const a = app({ signedIn: false }), first = a.selected();
+  const key = Object.keys(a.stored('videoTimeline'))[0];
+  a.context.setBlocked(first, true); a.get('next').onclick();
+  assert.notEqual(a.selected(), first);
+  a.context.replayTimeline(key);
+  a.context.applySynced(a.local());
+  assert.equal(a.selected(), first);
+  assert.deepEqual(a.stored('time'), {});
+  a.get('next').onclick();
+  assert.notEqual(a.selected(), first);
 });
