@@ -8,24 +8,24 @@ const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
 const picker = html.slice(html.indexOf('  function pick('),html.indexOf('  let selection ='));
 function setup(count=61) {
   const ids=Array.from({length:count},(_,i)=>['video'+i]);
-  const context=vm.createContext({VIDEOS:{morning:ids,evening:[]},mode:'morning',blocked:new Set(),liked:new Set(),lastShown:{},Math:Object.assign(Object.create(Math),{random:()=>0})});
+  const context=vm.createContext({Rotation:require('../rotation.js'),watched:{},marks:{liked:{},blocked:{}},VIDEOS:{morning:ids,evening:[]},mode:'morning',blocked:new Set(),liked:new Set(),lastShown:{},Math:Object.assign(Object.create(Math),{random:()=>0})});
   context.pool = m => context.VIDEOS[m];
   vm.runInContext(picker,context);
   return context;
 }
-test('guest rotation also requires 60 distinct intervening videos',()=>{
+test('completed guest routines require 60 distinct intervening completions',()=>{
   const c=setup(), seen=[];
   for(let i=0;i<250;i++){
     const v=c.pick(seen.at(-1));assert.ok(v);
     const prior=seen.lastIndexOf(v[0]);
     if(prior>=0)assert.ok(new Set(seen.slice(prior+1)).size>=60);
-    seen.push(v[0]);c.lastShown[v[0]]=i+1;
+    seen.push(v[0]);c.watched[v[0]]=i+1;c.lastShown[v[0]]=i+1;
   }
 });
 test('an undersized exhausted pool does not silently repeat; likes remain eligible',()=>{
-  const c=setup(3);c.lastShown={video0:1,video1:2,video2:3};
-  assert.equal(c.pick(),null);c.liked.add('video0');assert.equal(c.pick()[0],'video0');
-  c.blocked.add('video0');assert.equal(c.pick(),null);
+  const c=setup(3);c.watched={video0:1,video1:2,video2:3};
+  assert.equal(c.pick(),null);c.marks.liked.video0=[1,1];assert.equal(c.pick()[0],'video0');
+  c.marks.blocked.video0=[1,1];assert.equal(c.pick(),null);
 });
 test('both libraries support the rotation and every video ID is unique',()=>{
   const c=vm.createContext({window:{}});vm.runInContext(fs.readFileSync(path.join(root,'videos.js'),'utf8'),c);
@@ -33,4 +33,10 @@ test('both libraries support the rotation and every video ID is unique',()=>{
   for(const videos of Object.values(c.window.VIDEOS))assert.ok(videos.length>=65);
   assert.equal(new Set(all.map(v=>v[0])).size,all.length);
   for(const [id,title,channel,length]of all){assert.match(id,/^[\w-]{11}$/);assert.ok(title&&channel);assert.match(length,/^\d{1,2}:\d{2}$/);}
+});
+
+test('offering an entire small pool repeatedly never exhausts unwatched videos',()=>{
+ const c=setup(3), seen=[];
+ for(let i=0;i<30;i++){const v=c.pick(seen.at(-1));assert.ok(v);c.lastShown[v[0]]=i+1;seen.push(v[0]);}
+ assert.equal(new Set(seen).size,3);assert.equal(Object.keys(c.watched).length,0);
 });
