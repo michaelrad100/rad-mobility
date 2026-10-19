@@ -80,6 +80,8 @@ function app({ signedIn = true } = {}) {
     construct: () => context.onYouTubeIframeAPIReady(),
     ready: () => options.events.onReady({ target: player }),
     blockPlayback: () => options.events.onAutoplayBlocked({ target: player }),
+    error: data => options.events.onError({ data }),
+    monitoring: () => !!interval,
     loaded: () => loadedId,
     playCalls: () => playCalls,
     pauseCalls: () => pauseCalls,
@@ -384,4 +386,15 @@ test('native fallback still lets the user record completion credit', () => {
   assert.notEqual(a.selected(), id);
   a.get('fallback-finish').onclick();
   assert.deepEqual(Object.keys(a.stored('time')[day]), [id]);
+});
+
+test('failure and retry stop the old playback timer before rebuilding the player', () => {
+  const a = playingApp();
+  assert.equal(a.monitoring(), true);
+  a.error(5);
+  assert.equal(a.monitoring(), false);
+  a.get('retry-player').onclick();
+  assert.equal(a.monitoring(), false);
+  a.ready(); a.state(1);
+  assert.equal(a.monitoring(), true);
 });
