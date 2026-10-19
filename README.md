@@ -32,4 +32,6 @@ Version 2.8 adds **Finish routine ✓** during the last 30 seconds of an embedde
 
 Version 2.9 waits for both the YouTube API and a valid selected video before constructing the player. It avoids re-cueing the same video on readiness, preloads the API, and replaces an unready player when its card changes. If initialization stalls for ten seconds (or the script fails), it reveals native YouTube playback with Retry player and Open in YouTube options. Retrying keeps the selected recommendation; late callbacks from a replaced player are ignored. Native fallback playback uses YouTube's controls; **I’ve finished this routine** records completion credit when automatic tracking is unavailable. Opening YouTube externally uses the existing Finished? check-in.
 
+Version 3.0 also stops the old progress timer when a playing video fails or the player is rebuilt, so it cannot poll a replacement before it is ready.
+
 Deploy the updated sync service **before** publishing app version 2.4: the app requires its `/recommend` endpoint. The backend remains compatible with older apps' `/sync` requests. Merging app changes to main publishes GitHub Pages and triggers a michaelrad.me rebuild, as described in `CLAUDE.md`.

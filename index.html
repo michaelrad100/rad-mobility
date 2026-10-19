@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="2.9">
+<meta name="version" content="3.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -1173,6 +1173,7 @@
 
   // ---- YouTube player ----
   function resetPlayer() {
+    clearInterval(progressTimer);
     ++playerGeneration; ready = false; clearTimeout(playerLoadTimer);
     if (player) { try { player.destroy(); } catch {} }
     player = null; playerLoadingId = null; nativeFrameId = null;
@@ -1183,6 +1184,7 @@
   }
   function showPlayerFallback() {
     if (ready || !video || appMode) return;
+    clearInterval(progressTimer);
     nativeFallback = true;
     // Even if the API script failed, a normal embed can load independently.
     if (!player && nativeFrameId !== video[0]) {
