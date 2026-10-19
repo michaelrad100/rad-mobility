@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="3.0">
+<meta name="version" content="3.1">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -89,7 +89,7 @@
   }
   body.evening .player { box-shadow: 0 20px 54px -16px var(--shadow), 0 0 0 1px var(--line); }
   .player iframe, #yt { position: absolute; inset: 0; width: 100%; height: 100%; }
-  /* Own the tap target instead of relying on YouTube's controls lining up underneath. */
+  /* Poster is only for the explicit YouTube-app handoff. Embedded playback uses native controls. */
   .poster { position: absolute; inset: 0; width: 100%; height: 100%; text-align: left; transition: opacity .35s; }
   .poster img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .poster::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,0) 45%, rgba(0,0,0,.45)); }
@@ -99,10 +99,6 @@
     box-shadow: 0 8px 24px rgba(0,0,0,.25);
   }
   .poster .play svg { width: 26px; height: 26px; margin-left: 4px; fill: #2b2620; }
-  .poster:disabled { cursor: wait; }
-  .poster:disabled .play { opacity: .6; }
-  .player-status { position: absolute; z-index: 1; top: calc(50% + 44px); left: 0; right: 0; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 4px #000; }
-  .player-status:empty { display: none; }
   .player-help { margin-top: 12px; color: var(--muted); font-size: 14px; line-height: 1.5; }
   .player-help button, .player-help a { text-decoration: underline; color: inherit; margin-right: 12px; }
   .poster .len {
@@ -355,12 +351,11 @@
 
   <div class="player" id="card">
     <div id="yt"></div>
-    <button class="poster" id="poster" type="button" aria-label="Play video" disabled>
+    <div class="poster" id="poster" aria-hidden="true" hidden>
       <img id="thumb" alt="">
       <span class="play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12.5-7.5z"/></svg></span>
-      <span class="player-status" id="player-status" role="status">Loading player…</span>
       <span class="len" id="len"></span>
-    </button>
+    </div>
     <div class="shield top"></div>
     <div class="shield bottom"></div>
     <button class="size-btn" id="size-btn"></button>
@@ -700,17 +695,15 @@
     $("len").textContent = v[3];
     $("applink").href = `https://www.youtube.com/watch?v=${v[0]}`;
     $("fallback-link").href = $("applink").href;
-    const img = $("thumb");
-    img.onerror = () => { img.onerror = null; img.src = `https://i.ytimg.com/vi/${v[0]}/hqdefault.jpg`; };
-    img.src = `https://i.ytimg.com/vi/${v[0]}/maxresdefault.jpg`;
     $("poster").classList.remove("hidden");
     $("card").classList.remove("playing", "endzone"); $("paused").classList.remove("show");
     setBig(false); autoBig = false;
     if (animate) { const c = $("card"); c.classList.remove("swap"); void c.offsetWidth; c.classList.add("swap"); }
-    if (ready) { player.cueVideoById(v[0]); hush(); }
+    if (ready) { player.cueVideoById(v[0]); playerLoadingId = nativeFrameId = v[0]; hush(); }
     else {
       // Replace a stalled/in-flight player when its initial video has changed.
       if (player && playerLoadingId !== v[0]) resetPlayer();
+      mountNativePlayer();
       if (nativeFallback) showPlayerFallback();
       ensurePlayer();
       clearTimeout(playerLoadTimer);
@@ -743,15 +736,14 @@
 
   $("next").onclick = next;
   function paintPlay() {
-    $("poster").disabled = !ready || !video;
-    $("player-status").textContent = ready ? "" : "Loading player…";
+    $("poster").hidden = !appMode;
+    if (appMode && video) {
+      const id = video[0], img = $("thumb");
+      img.onerror = () => { img.onerror = null; img.src = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`; };
+      img.src = `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`;
+      $("poster").classList.remove("hidden");
+    }
   }
-  $("poster").onclick = () => {
-    if (!ready || !video) return;
-    // Keep this synchronous with the tap so iOS retains user activation.
-    player.playVideo();
-    $("player-status").textContent = "Starting…";
-  };
   $("size-btn").onclick = () => setBig(!$("card").classList.contains("big"));
   $("resume").onclick = () => { $("paused").classList.remove("show"); if (ready) player.playVideo(); };
   let scrubbing = false, pendingSeek = null, pendingSeekAt = 0;
@@ -849,6 +841,7 @@
   $("appmode").onchange = (e) => {
     appMode = e.target.checked; store.set("appMode", appMode);
     document.body.classList.toggle("app-mode", appMode);
+    paintPlay();
     $("player-help").hidden = appMode || !nativeFallback;
     if (!appMode && !ready && video) {
       if (nativeFallback) showPlayerFallback();
@@ -1182,19 +1175,19 @@
     if (old) old.replaceWith(placeholder); else $("card").prepend(placeholder);
     paintPlay();
   }
+  function mountNativePlayer() {
+    if (!video || nativeFrameId === video[0]) return;
+    const frame = document.createElement("iframe"); frame.id = "yt"; frame.title = video[1];
+    frame.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+    frame.referrerPolicy = "strict-origin-when-cross-origin";
+    frame.src = `https://www.youtube.com/embed/${video[0]}?enablejsapi=1&playsinline=1&rel=0&fs=0&iv_load_policy=3&origin=${encodeURIComponent(location.origin)}`;
+    $("yt").replaceWith(frame); nativeFrameId = video[0];
+  }
   function showPlayerFallback() {
     if (ready || !video || appMode) return;
     clearInterval(progressTimer);
     nativeFallback = true;
-    // Even if the API script failed, a normal embed can load independently.
-    if (!player && nativeFrameId !== video[0]) {
-      const frame = document.createElement("iframe"); frame.id = "yt"; frame.title = video[1];
-      frame.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
-      frame.referrerPolicy = "strict-origin-when-cross-origin";
-      frame.src = `https://www.youtube.com/embed/${video[0]}?enablejsapi=1&playsinline=1&rel=0&origin=${encodeURIComponent(location.origin)}`;
-      $("yt").replaceWith(frame);
-      nativeFrameId = video[0];
-    }
+    if (!player) mountNativePlayer();
     $("poster").classList.add("hidden"); $("paused").classList.remove("show");
     $("card").classList.remove("playing", "endzone"); setBig(false);
     $("player-help").hidden = false;
@@ -1202,7 +1195,7 @@
   $("retry-player").onclick = () => {
     if (!video || ready) return;
     nativeFallback = false; resetPlayer(); $("player-help").hidden = true;
-    $("poster").classList.remove("hidden");
+    mountNativePlayer();
     if (window.YT && YT.Player) youtubeAPIReady = true;
     ensurePlayer();
     if (!youtubeAPIReady) {
@@ -1217,11 +1210,8 @@
     if (!youtubeAPIReady || !video || player) return;
     const generation = ++playerGeneration, initialId = video[0];
     playerLoadingId = initialId;
+    // Attach to the already playable iframe; do not replace or reload it.
     try { player = new YT.Player("yt", {
-      videoId: initialId,
-      // Plays inside the app, not iOS's own full screen, so our shields and cover stay on top of YouTube's player.
-      // Big mode stands in for full screen.
-      playerVars: { playsinline: 1, rel: 0, modestbranding: 1, fs: 0, iv_load_policy: 3, disablekb: 1 },
       events: {
         onReady: () => {
           if (generation !== playerGeneration) return;
@@ -1229,8 +1219,12 @@
           $("player-help").hidden = true;
           // Re-cue only if the card actually changed; re-cueing the initial ID reloads it.
           if (video && video[0] !== initialId) player.cueVideoById(video[0]);
-          hush();
+          const state = player.getPlayerState();
+          if (state === YT.PlayerState.PLAYING || state === YT.PlayerState.PAUSED) {
+            hushed = false; $("card").classList.remove("hushed");
+          } else hush();
           paintPlay();
+          if ([YT.PlayerState.PLAYING, YT.PlayerState.PAUSED, YT.PlayerState.BUFFERING].includes(state)) handlePlayerState({ data: state }, generation);
         },
         onAutoplayBlocked: () => {
           if (generation !== playerGeneration) return;
@@ -1239,31 +1233,7 @@
           $("card").classList.remove("playing", "endzone"); setBig(false);
           toast("Tap YouTube's play button to start.");
         },
-        onStateChange: (e) => {
-          if (generation !== playerGeneration) return;
-          const S = YT.PlayerState, c = $("card");
-          if (e.data === S.PLAYING || e.data === S.BUFFERING) {
-            $("poster").classList.add("hidden"); c.classList.add("playing"); $("paused").classList.remove("show");
-            if (!autoBig) { autoBig = true; setBig(true); }
-          }
-          if (e.data === S.PAUSED) $("paused").classList.add("show");
-          updateTransport();
-          // Finishing, or stopping after ~80%, counts as complete. The confetti waits until then
-          // so it doesn't pop mid-routine.
-          if (e.data === S.ENDED || (e.data === S.PAUSED && reached)) markDone();
-          // At the end, step back out of big mode and reset the card, so YouTube's end screen of other videos never shows.
-          if (e.data === S.ENDED) next();
-          clearInterval(progressTimer);
-          if (e.data === S.PLAYING) progressTimer = setInterval(() => {
-            const dur = player.getDuration(), now = player.getCurrentTime();
-            if (!dur) return;
-            if (now / dur >= 0.8 && !reached) { reached = true; saveToday(); }
-            const want = video ? secs(video[3]) : dur;
-            if (hushed && now >= 1 && (Math.abs(dur - want) <= Math.max(4, want * 0.06) || now >= 15)) unhush();
-            c.classList.toggle("endzone", dur - now <= 22);
-            updateTransport();
-          }, 1000);
-        },
+        onStateChange: (e) => handlePlayerState(e, generation),
         // 100 = removed, 101/150 = owner disabled embedding. Hide it and move on.
         onError: (e) => {
           if (generation !== playerGeneration) return;
@@ -1272,6 +1242,31 @@
         },
       },
     }); } catch { player = null; showPlayerFallback(); }
+  }
+  function handlePlayerState(e, generation) {
+    if (generation !== playerGeneration) return;
+    const S = YT.PlayerState, c = $("card");
+    if (e.data === S.PLAYING || e.data === S.BUFFERING) {
+      $("poster").classList.add("hidden"); c.classList.add("playing"); $("paused").classList.remove("show");
+      if (!autoBig) { autoBig = true; setBig(true); }
+    }
+    if (e.data === S.PAUSED) $("paused").classList.add("show");
+    updateTransport();
+    // Finishing, or stopping after ~80%, counts as complete. The confetti waits until then
+    // so it doesn't pop mid-routine.
+    if (e.data === S.ENDED || (e.data === S.PAUSED && reached)) markDone();
+    // At the end, step back out of big mode and reset the card, so YouTube's end screen of other videos never shows.
+    if (e.data === S.ENDED) next();
+    clearInterval(progressTimer);
+    if (e.data === S.PLAYING) progressTimer = setInterval(() => {
+      const dur = player.getDuration(), now = player.getCurrentTime();
+      if (!dur) return;
+      if (now / dur >= 0.8 && !reached) { reached = true; saveToday(); }
+      const want = video ? secs(video[3]) : dur;
+      if (hushed && now >= 1 && (Math.abs(dur - want) <= Math.max(4, want * 0.06) || now >= 15)) unhush();
+      c.classList.toggle("endzone", dur - now <= 22);
+      updateTransport();
+    }, 1000);
   }
   window.onYouTubeIframeAPIReady = () => { youtubeAPIReady = true; ensurePlayer(); };
 </script>

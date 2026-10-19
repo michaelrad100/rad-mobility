@@ -57,7 +57,7 @@ function app({ signedIn = true } = {}) {
     YT: {
       PlayerState: { PLAYING: 1, PAUSED: 2, BUFFERING: 3, ENDED: 0, CUED: 5 },
       Player: function (_id, config) {
-        options = config; loadedId = config.videoId;
+        options = config; loadedId = get('yt').src.match(/embed\/([^?]+)/)[1];
         instances.push(config);
         player = {
           cueVideoById(id) { loadedId = id; cues.push(id); },
@@ -83,6 +83,8 @@ function app({ signedIn = true } = {}) {
     error: data => options.events.onError({ data }),
     monitoring: () => !!interval,
     loaded: () => loadedId,
+    isReady: () => vm.runInContext('ready', context),
+    nativeState: value => { state = value; },
     playCalls: () => playCalls,
     pauseCalls: () => pauseCalls,
     seeks,
@@ -161,29 +163,25 @@ test('guest startup retains the selected video when the player becomes ready', (
   assert.ok(a.loaded());
 });
 
-test('the visible poster is an actual button whose tap starts the ready player synchronously', async () => {
-  assert.match(html, /<button[^>]*id="poster"[^>]*aria-label="Play video"/);
-  const a = app();
-  a.construct();
-  await a.recommend();
-  assert.equal(a.get('poster').disabled, true);
-  assert.equal(a.get('player-status').textContent, 'Loading player…');
-  a.get('poster').onclick();
-  assert.equal(a.playCalls(), 0);
-  a.ready();
-  assert.equal(a.get('poster').disabled, false);
-  a.get('poster').onclick();
-  assert.equal(a.playCalls(), 1);
-  assert.equal(a.get('player-status').textContent, 'Starting…');
+test('native player is mounted before the API, with no loading overlay or click blocker', () => {
+  const a = app({ signedIn: false });
+  assert.match(a.get('yt').src, new RegExp('/embed/' + a.selected()));
+  assert.equal(a.instances.length, 0);
+  assert.equal(a.get('poster').hidden, true);
+  assert.equal(html.includes('Loading player…'), false);
+  assert.equal(a.get('poster').onclick, undefined);
+  const frame = a.get('yt');
+  a.construct(); a.ready();
+  assert.equal(a.get('yt'), frame);
+  assert.deepEqual(a.cues, []);
 });
 
-test('the play button remains disabled without a selected routine', async () => {
+test('an exhausted queue hides the native player card', async () => {
   const a = app();
   a.construct();
   await a.recommend(0, true);
-  assert.equal(a.get('poster').disabled, true);
-  a.get('poster').onclick();
-  assert.equal(a.playCalls(), 0);
+  assert.equal(a.get('card').hidden, true);
+  assert.equal(a.get('poster').hidden, true);
 });
 
 test('blocked scripted playback reveals the native player and removes tap shields', () => {
@@ -330,9 +328,9 @@ test('stalled player exposes native playback and retry after ten seconds; recove
   assert.equal(a.instances.length, 2);
   assert.equal(a.selected(), id); // retry does not consume another recommendation
   initial.events.onReady(); // late readiness from the destroyed player is ignored
-  assert.equal(a.get('poster').disabled, true);
+  assert.equal(a.isReady(), false);
   a.ready();
-  assert.equal(a.get('poster').disabled, false);
+  assert.equal(a.isReady(), true);
   assert.equal(a.get('player-help').hidden, true);
   a.timeout(10000);
   assert.equal(a.get('player-help').hidden, true);
@@ -351,7 +349,7 @@ test('missing API script falls back to an independent embed and follows new card
   assert.notEqual(a.get('yt'), first);
   a.construct(); a.ready();
   assert.equal(a.get('player-help').hidden, true);
-  assert.equal(a.get('poster').disabled, false);
+  assert.equal(a.isReady(), true);
 });
 
 test('a card change replaces a stalled player and ignores its late callbacks', () => {
@@ -363,7 +361,7 @@ test('a card change replaces a stalled player and ignores its late callbacks', (
   assert.notEqual(a.selected(), initial);
   stale.events.onReady();
   stale.events.onStateChange({ data: 1 });
-  assert.equal(a.get('poster').disabled, true);
+  assert.equal(a.isReady(), false);
   assert.equal(a.get('card').classList.contains('playing'), false);
   a.ready();
   assert.equal(a.loaded(), a.selected());
@@ -397,4 +395,16 @@ test('failure and retry stop the old playback timer before rebuilding the player
   assert.equal(a.monitoring(), false);
   a.ready(); a.state(1);
   assert.equal(a.monitoring(), true);
+});
+
+test('late API attachment preserves native playback and starts progress tracking', () => {
+  const a = app({ signedIn: false });
+  const frame = a.get('yt');
+  a.nativeState(1); // the user already started playback with YouTube's own button
+  a.construct(); a.ready();
+  assert.equal(a.get('yt'), frame);
+  assert.deepEqual(a.cues, []);
+  assert.equal(a.monitoring(), true);
+  assert.equal(a.get('card').classList.contains('playing'), true);
+  assert.equal(a.get('card').classList.contains('hushed'), false);
 });
