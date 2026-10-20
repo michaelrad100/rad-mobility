@@ -10,7 +10,7 @@ const script = html.match(/<script>\s*([\s\S]*?)<\/script>/)[1];
 
 // Run the actual app with controlled recommendation and YouTube readiness events.
 // No account credentials, network calls, or browser storage are used.
-function app({ signedIn = true, seed = {} } = {}) {
+function app({ signedIn = true, seed = {}, hour = 10 } = {}) {
   const element = () => {
     const classes = new Set();
     return {
@@ -41,6 +41,8 @@ function app({ signedIn = true, seed = {} } = {}) {
   let position = 20, duration = 600, state = -1, interval;
   const seeks = [];
   const context = vm.createContext({
+    // Control automatic morning/evening selection independently of the runner's clock.
+    Date: class extends Date { getHours() { return hour; } },
     document: {
       body: element(), head: element(), getElementById: get, createElement: element,
       querySelector: get, querySelectorAll: () => [], addEventListener() {},
@@ -513,17 +515,21 @@ test('adding a video to both rotations persists without changing playback, likes
   assert.equal(b.context.libraryItems('My creator').length, 1);
 });
 
-test('signed-in personal metadata joins recommendation requests and stale sync cannot undo removal', async () => {
-  const v = {id:'newVid12345',mode:'morning',title:'Personal routine',channel:'Creator',length:'20:00',updatedAt:1000,removed:false};
-  const a=app({seed:{personalVideos:{'morning:newVid12345':v}}});
+for (const [mode, hour] of [['morning', 10], ['evening', 22]]) {
+test(`signed-in personal metadata joins ${mode} requests and stale sync cannot undo removal`, async () => {
+  const v = {id:'newVid12345',mode,title:'Personal routine',channel:'Creator',length:'20:00',updatedAt:1000,removed:false};
+  const key = `${mode}:${v.id}`;
+  const a=app({hour,seed:{personalVideos:{[key]:v}}});
+  assert.equal(a.requests[0].body.mode, mode);
   assert.ok(a.requests[0].body.ids.includes(v.id));
-  assert.equal(a.requests[0].body.data.library['morning:newVid12345'].title, v.title);
+  assert.equal(a.requests[0].body.data.library[key].title, v.title);
   await a.recommend();
-  const d={days:{},time:{},liked:{},blocked:{},library:{'morning:newVid12345':{...v,removed:true,updatedAt:2000}}};
-  a.context.applySynced(d); a.context.applySynced({...d,library:{'morning:newVid12345':v}});
-  assert.equal(a.stored('personalVideos')['morning:newVid12345'].removed,true);
-  assert.equal(vm.runInContext('pool("morning").some(v => v[0] === "newVid12345")',a.context),false);
+  const d={days:{},time:{},liked:{},blocked:{},library:{[key]:{...v,removed:true,updatedAt:2000}}};
+  a.context.applySynced(d); a.context.applySynced({...d,library:{[key]:v}});
+  assert.equal(a.stored('personalVideos')[key].removed,true);
+  assert.equal(vm.runInContext(`pool("${mode}").some(v => v[0] === "newVid12345")`,a.context),false);
 });
+}
 
 test('creator selection imports only chosen videos and saves a reusable creator source', () => {
   const a=app({signedIn:false});

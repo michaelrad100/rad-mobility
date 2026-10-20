@@ -2,6 +2,10 @@
 
 A daily regular-mobility and evening wind-down routine at https://michaelrad.me/mobility/.
 
+## App icon (3.6)
+
+The Reach logo uses a flexible lowercase r on the app's sunrise palette. `icon.svg` is the editable source; `icon.png` is the 512px app/favicon export and `apple-touch-icon.png` is the 180px home-screen export. Both PNGs have opaque, square backgrounds; the device supplies the rounded icon mask. Icon and manifest URLs are versioned so browsers request the new artwork.
+
 ## Video rotation (3.4)
 
 Showing, skipping, refreshing, or merely starting a routine does **not** count as watching it. These cards remain in circulation and stay recorded in Recently shown. Recommendations spread offers among eligible videos for variety, without exhausting them. Only an explicit thumbs-down persistently excludes a video; playback restrictions expose retry/external playback instead of silently saving a dislike.
