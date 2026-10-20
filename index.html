@@ -5,15 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="3.5">
+<meta name="version" content="3.6">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Rad Mobility">
 <meta name="theme-color" content="#ffe6a8">
-<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-<link rel="icon" type="image/png" href="icon.png">
-<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=3.6">
+<link rel="icon" type="image/png" href="icon.png?v=3.6">
+<link rel="manifest" href="manifest.json?v=3.6">
 <link rel="preconnect" href="https://www.youtube.com">
 <link rel="preload" as="script" href="https://www.youtube.com/iframe_api">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -27,7 +27,7 @@
     --bg: #fbf3ee; --fg: #2e1a2b; --muted: #9a7a88; --faint: rgba(46,26,43,.07);
     --card: rgba(255,245,238,.15); --line: rgba(196,112,92,.11); --soft: #eaa27e;
     --accent: #e0773a; --accent-fg: #fff; --shadow: rgba(230,120,70,.35);
-    /* the icon's sun, used for the main accents in both modes */
+    /* warm sunrise accents in both modes */
     --sunset: linear-gradient(100deg, #ffc76a 0%, #ff9a5c 100%);
     /* week dots: which routine you did that day, the same in both modes */
     --am: linear-gradient(135deg, #ffc76a, #ff9a5c);
@@ -37,7 +37,7 @@
     --retro: "Orbitron", -apple-system, sans-serif;
   }
   body.evening {
-    /* the icon's night sky, warming to magenta at the horizon */
+    /* night sky, warming to magenta at the horizon */
     --sky: linear-gradient(180deg, #12082e 0%, #1d0b3d 45%, #3a1052 80%, #56145f 100%);
     --bg: #12082e; --fg: #f5ecff; --muted: #a996c6; --faint: rgba(255,255,255,.08);
     --card: rgba(255,255,255,.04); --line: rgba(255,170,240,.12); --soft: #ff5ea8;
@@ -670,7 +670,7 @@
     if (fresh.length) setTimeout(() => toast(`Badge unlocked: ${fresh.map(b => b.name).join(", ")}`, openHist, "View"), 2600);
   }
 
-  // ---- confetti, in the icon's sunrise / synthwave colors ----
+  // ---- confetti, in the app's sunrise / synthwave colors ----
   function confetti() {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     const colors = mode === "evening" ? ["#ffb347", "#ff5e7e", "#ff3ea5", "#b58cff", "#f5ecff"]

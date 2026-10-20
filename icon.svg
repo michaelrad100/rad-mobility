@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Rad Mobility — Reach</title>
+  <defs>
+    <linearGradient id="sunrise" x1="21.9%" y1="-10.2%" x2="78.1%" y2="110.2%">
+      <stop offset="0" stop-color="#ffe6a8"/>
+      <stop offset=".55" stop-color="#ffdcc0"/>
+      <stop offset="1" stop-color="#ffc6c0"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#sunrise)" d="M0 0h512v512H0z"/>
+  <path fill="#2e1a2b" transform="translate(-31 -55) scale(1.12)" d="M145 401 C122 407 104 397 110 374 C119 342 127 318 119 285 C112 258 104 237 112 215 C118 195 133 184 150 188 C171 192 176 208 173 227 L170 245 C169 252 175 255 180 248 C229 181 302 140 372 143 C407 145 430 162 427 186 C424 211 404 221 372 220 C290 214 234 233 206 276 C185 307 185 329 178 359 C174 379 162 397 145 401 Z"/>
+</svg>
