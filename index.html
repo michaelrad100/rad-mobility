@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="3.6">
+<meta name="version" content="3.7">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -118,6 +118,13 @@
   .player.endzone .shield.top { height: 100%; }
   /* Big mode: while a video plays it fills the screen. Our shields and cover come along because they live inside .player. */
   .player.big { position: fixed; inset: 0; z-index: 15; width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; box-shadow: none; }
+  @media (pointer: coarse) and (min-aspect-ratio: 16/9) {
+    /* Fill a wide phone with the routine. Keep pre-roll controls inside the viewport. */
+    .player.big.playing:not(.hushed) #yt {
+      top: 50%; bottom: auto; height: auto; aspect-ratio: 16/9;
+      transform: translateY(-50%); border: 0;
+    }
+  }
   body.theater { overflow: hidden; }
   .size-btn {
     position: absolute; z-index: 4; right: calc(env(safe-area-inset-right) + 12px); top: calc(env(safe-area-inset-top) + 12px);
@@ -155,6 +162,7 @@
   .skip span { display: inline-grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(0,0,0,.4); font-size: 14px; font-weight: 600; opacity: .55; transition: opacity .15s, transform .15s; }
   .skip:active span, .skip:focus-visible span { opacity: 1; transform: scale(1.12); }
   .seekbar { position: absolute; bottom: 0; left: 0; right: 0; display: flex; align-items: center; gap: 8px; padding: 16px 12px max(8px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgba(0,0,0,.85)); pointer-events: auto; }
+  .player.big .seekbar { padding-left: calc(12px + env(safe-area-inset-left)); padding-right: calc(12px + env(safe-area-inset-right)); }
   .play-toggle { flex: 0 0 44px; height: 44px; display: grid; place-items: center; font-size: 20px; }
   .timeline { appearance: none; -webkit-appearance: none; flex: 1; min-width: 0; height: 44px; margin: 0; background: transparent; cursor: pointer; touch-action: none; }
   .timeline::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: rgba(255,255,255,.55); }
