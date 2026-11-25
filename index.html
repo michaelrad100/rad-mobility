@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Rad Mobility</title>
 <!-- Add 0.1 with every change merged to main (2.9 is followed by 3.0); shown at the bottom of the app and used by the update notice. -->
-<meta name="version" content="3.7">
+<meta name="version" content="3.8">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -121,6 +121,9 @@
   @media (pointer: coarse) and (min-aspect-ratio: 16/9) {
     /* Fill a wide phone with the routine. Keep pre-roll controls inside the viewport. */
     .player.big.playing:not(.hushed) #yt {
+      /* Let the embed's own safe-area gutter fall outside the clipped player. */
+      left: calc(0px - env(safe-area-inset-left, 0px)); right: auto;
+      width: calc(100% + env(safe-area-inset-left, 0px) + env(safe-area-inset-right, 0px));
       top: 50%; bottom: auto; height: auto; aspect-ratio: 16/9;
       transform: translateY(-50%); border: 0;
     }
